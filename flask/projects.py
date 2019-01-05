@@ -13,14 +13,18 @@ app = Flask(__name__)
 CORS(app)
 
 ARCHIVE_PATH = 'upload_archive/'
-OUTPUT_PATH = 'project/flask/output.jpg'
-INPUT_PATH = 'project/flask/input.jpg'
+OUTPUT_PATH = 'PersonalProjects/flask/output.jpg'
+INPUT_PATH = 'PersonalProjects/flask/input.jpg'
+
+if not os.path.exists(ARCHIVE_PATH):
+    os.makedirs(ARCHIVE_PATH)
 
 def show_image_w_bboxes_for_server(img_path, method):
     img = dlib.load_rgb_image(img_path)
     plt.figure(figsize=(7, 7))
     
     if method == 'dlib_cnn_1':
+        # todo: change path. Currently in root dir
         weights = 'weights/dlib_cnn_detector_weights.dat'
         detector = dlib.cnn_face_detection_model_v1(weights)
         faces = detector(img, 1)
@@ -35,7 +39,8 @@ def show_image_w_bboxes_for_server(img_path, method):
             
     elif method == 'opencv_haar':
         img_gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-        weights_path = 'project/weights/haarcascade_frontalface_default.xml'
+        # todo: change path. Currently in root dir
+        weights_path = 'PersonalProjects/weights/haarcascade_frontalface_default.xml'
         detector = cv2.CascadeClassifier(weights_path)
         faces = detector.detectMultiScale(img_gray, scaleFactor=1.1, minNeighbors=5)
         
