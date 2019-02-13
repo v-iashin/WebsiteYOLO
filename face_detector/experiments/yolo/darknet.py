@@ -1,5 +1,7 @@
 from torch import nn
 
+from utils import parse_cfg
+
 # class EmptyLayer(nn.Module):
 #     '''A dummy layer for "route" and "shortcut" layers'''
     
@@ -22,7 +24,7 @@ class ShortcutLayer(nn.Module):
         self.frm = frm
         
 class DetectionLayer(nn.Module):
-    '''TODO the doc'''
+    '''Similarly to the previous layers, Detection layer in defined'''
     
     def __init__(self, anchors, classes, num, jitter, ignore_thresh, truth_thresh, random, in_width):
         super(DetectionLayer, self).__init__()
@@ -37,27 +39,40 @@ class DetectionLayer(nn.Module):
         
         
 class Darknet(nn.Module):
-    '''TODO'''
+    '''Darknet model (YOLO v3)'''
     
-    def __init__(self, layers_info):
+    def __init__(self, cfg_path):
         super(Darknet, self).__init__()
-        self.layers_info = layers_info
+        self.layers_info = parse_cfg(cfg_path)
+        self.net_info, self.layers_list = self.create_layers(self.layers_info)
+        print('shortcut is using output[i-1] instead of x check whether works with x')
+        
+    def forward(self, x, device):
+        
+        pass
     
-    def create_layers(self):
-        '''TODO'''
+    def create_layers(self, layers_info):
+        '''An auxiliary fuction that creates a ModuleList given layers_info
+        
+        Input: layers_info (list): a list containing net info (0th element) and 
+                                   info for each layer (module) specified in the config
+                                   (1: elements).
+        Outputs: net_info, layers_list (tuple): net_info (dict) contains model info
+                                                layers_list (nn.ModuleList) contains list of
+                                                layers.'''
         # the first element is not a layer but the network info (lr, batchsize,  ...)
-        net_info = self.layers_info[0]
+        net_info = layers_info[0]
         # init. the modulelist instead of a list to add all parameters to nn.Module
-        layer_list = nn.ModuleList()
+        layers_list = nn.ModuleList()
+        # cache the # of filters as we will need them in Conv2d
+        # it starts with the number of channels specified in net info, often = to 3 (RGB)
+        filters_cache = [int(net_info['channels'])]
 
         print("WARNING: sudivisions of a batch aren't used in contrast to the original cfg" )
 
-        for i, layer_info in enumerate(self.layers_info[1:]):
+        for i, layer_info in enumerate(layers_info[1:]):
             # we initialize sequential as a layer may have conv, bn, and activation
             layer = nn.Sequential()
-            # cache the # of filters as we will need them in Conv2d
-            # it starts with the number of channels specified in net info, often = to 3 (RGB)
-            filters_cache = [int(net_info['channels'])]
             name = layer_info['name'] # conv, upsample, route, shortcut, yolo
 
             if name == 'convolutional':
@@ -130,7 +145,7 @@ class Darknet(nn.Module):
                 masks = [int(mask) for mask in layer_info['mask'].split(',')]
                 # select anchors (form: 10,13,16,30,33,23,30,61,62,45 -- 5 pairs)
                 # first extract the coordinates
-                coords = [int(coord) for coord in layer_info['anchors']]
+                coords = [int(coord) for coord in layer_info['anchors'].split(',')]
                 # make anchors (tuples)
                 anchors = list(zip(coords[::2], coords[1::2]))
                 # select anchors that belong to mask
@@ -139,11 +154,11 @@ class Darknet(nn.Module):
                 # add the detector layer to the list
                 detection = DetectionLayer(anchors, classes, num, jitter, ignore_thresh, 
                                            truth_thresh, random, in_width)
-                layer.add_module('detector_' + i, detection)
+                layer.add_module('yolo_{}'.format(i), detection)
 
 
             # append the layer to the modulelist
-            layer_list.append(layer)
+            layers_list.append(layer)
 
-            print('make_layers returns net_info as well. check whether it"s necessary')
-            return net_info, layer_list
+        print('make_layers returns net_info as well. check whether it"s necessary')
+        return net_info, layers_list
