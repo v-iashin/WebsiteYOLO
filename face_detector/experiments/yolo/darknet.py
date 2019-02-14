@@ -23,11 +23,11 @@ class ShortcutLayer(nn.Module):
         super(ShortcutLayer, self).__init__()
         self.frm = frm
         
-class DetectionLayer(nn.Module):
-    '''Similarly to the previous layers, Detection layer in defined'''
+class YOLOLayer(nn.Module):
+    '''Similarly to the previous layers, YOLO layer in defined'''
     
     def __init__(self, anchors, classes, num, jitter, ignore_thresh, truth_thresh, random, in_width):
-        super(DetectionLayer, self).__init__()
+        super(YOLOLayer, self).__init__()
         self.anchors = anchors
         self.classes = classes
         self.num = num
@@ -46,6 +46,7 @@ class Darknet(nn.Module):
         self.layers_info = parse_cfg(cfg_path)
         self.net_info, self.layers_list = self.create_layers(self.layers_info)
         print('shortcut is using output[i-1] instead of x check whether works with x')
+        print('NOTE THAT CONV BEFORE YOLO USES (num_classes filters) * num_anch')
         
     def forward(self, x, device):
         
@@ -88,6 +89,7 @@ class Darknet(nn.Module):
                 layer.add_module('conv_{}'.format(i), conv)
 
                 # some layers doesn't have BN
+                # TODO: fix the bn if possible (bias)
                 try:
                     layer_info['batch_normalize']
                     layer.add_module('bn_{}'.format(i), nn.BatchNorm2d(out_filters))
@@ -130,7 +132,7 @@ class Darknet(nn.Module):
                 # add the shortcut layer to the modulelist
                 layer.add_module('shortcut_{}'.format(i), ShortcutLayer(frm))
 
-            # detection layer
+            # yolo layer
             elif name == 'yolo':
                 # extract arguments for the layer
                 classes = int(layer_info['classes'])
@@ -151,10 +153,10 @@ class Darknet(nn.Module):
                 # select anchors that belong to mask
                 anchors = [anchors[mask] for mask in masks]
 
-                # add the detector layer to the list
-                detection = DetectionLayer(anchors, classes, num, jitter, ignore_thresh, 
+                # add the yolo layer to the list
+                yolo = YOLOLayer(anchors, classes, num, jitter, ignore_thresh, 
                                            truth_thresh, random, in_width)
-                layer.add_module('yolo_{}'.format(i), detection)
+                layer.add_module('yolo_{}'.format(i), yolo)
 
 
             # append the layer to the modulelist
