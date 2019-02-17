@@ -44,7 +44,7 @@ class Darknet(nn.Module):
     def __init__(self, cfg_path):
         super(Darknet, self).__init__()
         self.layers_info = parse_cfg(cfg_path)
-        self.net_info, self.layers_list = self.create_layers(self.layers_info)
+        self.net_info, self.layers_list, self.filters_cache = self.create_layers(self.layers_info)
         print('shortcut is using output[i-1] instead of x check whether works with x')
         print('NOTE THAT CONV BEFORE YOLO USES (num_classes filters) * num_anch')
         
@@ -77,6 +77,7 @@ class Darknet(nn.Module):
             name = layer_info['name'] # conv, upsample, route, shortcut, yolo
 
             if name == 'convolutional':
+                
                 # extract arguments for the layer
                 in_filters = filters_cache[-1]
                 out_filters = int(layer_info['filters'])
@@ -163,4 +164,4 @@ class Darknet(nn.Module):
             layers_list.append(layer)
 
         print('make_layers returns net_info as well. check whether it"s necessary')
-        return net_info, layers_list
+        return net_info, layers_list, filters_cache
