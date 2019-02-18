@@ -1,3 +1,4 @@
+import torch
 from torch import nn
 
 from utils import parse_cfg
@@ -44,13 +45,86 @@ class Darknet(nn.Module):
     def __init__(self, cfg_path):
         super(Darknet, self).__init__()
         self.layers_info = parse_cfg(cfg_path)
-        self.net_info, self.layers_list, self.filters_cache = self.create_layers(self.layers_info)
+        self.net_info, self.layers_list = self.create_layers(self.layers_info)
         print('shortcut is using output[i-1] instead of x check whether works with x')
         print('NOTE THAT CONV BEFORE YOLO USES (num_classes filters) * num_anch')
         
     def forward(self, x, device):
-        
-        pass
+        # cache the outputs for route and shortcut layers
+        outputs = []
+
+        for i, layer in enumerate(self.layers_list):
+            # i+1 because 0th is net_info
+            name = self.layers_info[i+1]['name']
+
+            if name in ['convolutional', 'upsample']:
+                x = layer(x)
+
+            elif name == 'shortcut':
+                # index which is used for shortcut (usually '-3')
+                x = outputs[-1] + outputs[layer[0].frm]
+        #         x = x + outputs[layer.frm]
+
+            elif name == 'route':
+                to_cat = [outputs[route_idx] for route_idx in layer[0].routes]
+                x = torch.cat(to_cat, dim=1)
+
+            elif name == 'yolo':
+                # input size: (B, (4+1+classes)*num_achors=255, Gi, Gi)
+                B, C, w, h = x.size()
+                # read layer's info
+                anchors_list = layer[0].anchors
+                classes = layer[0].classes
+                in_width = layer[0].in_width
+                num_anchs = len(anchors_list)
+                # bbox coords + obj score + class scores
+                num_feats = 4 + 1 + classes
+
+                # transform the predictions
+                # (B, ((4+1+classes)*num_achors), Gi, Gi)
+                # -> (B, Gi*Gi*num_anchors, (4+1+classes))
+                x = x.view(B, num_anchs, num_feats, w, h)
+                x = x.permute(0, 3, 4, 1, 2).contiguous() # (B, w, h, num_anchs, num_feats)
+                x = x.view(B, h*w*num_anchs, num_feats)
+
+                # To calc predictions, first we need to add a center offset (cx, cy).
+                # To achieve this we need to create two columns with every possible 
+                # combination of two numbers from 0 to num_grid and
+                # then add it to the center offset predictions at 0 and 1 indices
+                # in x.
+                grid = torch.arange(w)
+                a, b = torch.meshgrid(grid, grid)
+                cx = a.type(torch.FloatTensor).view(-1, 1) # 0, 0, ..., 12, 12
+                cy = b.type(torch.FloatTensor).view(-1, 1) # 0, 1, ..., 11, 12
+                # cxy.shape is (1, *, 2) where (:, :, 0) is an offset for cx, (:, :, 1) -- for cy
+                cxy = torch.cat((cx, cy), dim=1).repeat(1, num_anchs).view(-1, 2).unsqueeze(0)
+                cxy = cxy.to(device)
+
+                # to calc the offsets for bbox size we need to scale anchors
+                stride = in_width // w
+                anchors_list = [(anchor[0] / stride, anchor[1] / stride) for anchor in anchors_list]
+                anchors_tens = torch.FloatTensor(anchors_list)
+                # pwh.shape is the same as cxy
+                pwh = anchors_tens.repeat(w * w, 1).unsqueeze(0)
+                pwh = pwh.to(device)
+
+                # transform the predictions
+                x[:, :, 0:2] = torch.sigmoid(x[:, :, 0:2]) + cxy
+                x[:, :, 2:4] = pwh * torch.exp(x[:, :, 2:4])
+                x[:, :, 4] = torch.sigmoid(x[:, :, 4]) * stride
+                x[:, :, 5:5+classes] = torch.sigmoid((x[:, :, 5:5+classes]))
+
+                # add new predictions to the list of predictions from all scales
+                # if variable does exist
+                try:
+                    predictions = torch.cat((predictions, x), dim=1)
+
+                except NameError:
+                    predictions = x
+
+            outputs.append(x)
+
+        return predictions
     
     def create_layers(self, layers_info):
         '''An auxiliary fuction that creates a ModuleList given layers_info
@@ -70,6 +144,7 @@ class Darknet(nn.Module):
         filters_cache = [int(net_info['channels'])]
 
         print("WARNING: sudivisions of a batch aren't used in contrast to the original cfg" )
+        print('we also can remove bias due to bn')
 
         for i, layer_info in enumerate(layers_info[1:]):
             # we initialize sequential as a layer may have conv, bn, and activation
@@ -103,9 +178,6 @@ class Darknet(nn.Module):
                 if layer_info['activation'] == 'leaky':
                     layer.add_module('leaky_{}'.format(i), nn.LeakyReLU(0.1))
 
-                # add the number of filters to filters_cache
-                filters_cache.append(out_filters)
-
             elif name == 'upsample':
                 # extract arguments for the layer
                 stride = int(layer_info['stride'])
@@ -122,9 +194,6 @@ class Darknet(nn.Module):
         #         layer.add_module('route_' + i, EmptyLayer())
                 # add the route layer to the modulelist
                 layer.add_module('route_{}'.format(i), RouteLayer(routes))
-
-                # add the number of filters to filters_cache
-                filters_cache.append(out_filters)
 
             # in forward() we will need to add the output of a previous layer, nothing to do here
             elif name == 'shortcut':
@@ -162,6 +231,8 @@ class Darknet(nn.Module):
 
             # append the layer to the modulelist
             layers_list.append(layer)
+            # append number of filter to filter_cache at each iteration (inc. yolo and shorcut)
+            filters_cache.append(out_filters)
 
         print('make_layers returns net_info as well. check whether it"s necessary')
-        return net_info, layers_list, filters_cache
+        return net_info, layers_list
