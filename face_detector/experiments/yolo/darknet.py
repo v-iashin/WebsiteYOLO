@@ -159,20 +159,18 @@ class Darknet(nn.Module):
                 kernel_size = int(layer_info['size'])
                 pad = (kernel_size - 1) // 2 if int(layer_info['pad']) else 0
                 stride = int(layer_info['stride'])
-
-                # make conv module and add it to the sequential
-                conv = nn.Conv2d(in_filters, out_filters, kernel_size, stride, pad)
-                layer.add_module('conv_{}'.format(i), conv)
-
+                
                 # some layers doesn't have BN
-                # TODO: fix the bn if possible (bias)
                 try:
                     layer_info['batch_normalize']
+                    conv = nn.Conv2d(in_filters, out_filters, kernel_size, stride, pad, bias=False)
+                    layer.add_module('conv_{}'.format(i), conv)
                     layer.add_module('bn_{}'.format(i), nn.BatchNorm2d(out_filters))
-
+                    
                 except KeyError:
-                    print('to del, this message should be printed 3ish times')
-                    pass
+                    conv = nn.Conv2d(in_filters, out_filters, kernel_size, stride, pad)
+                    layer.add_module('conv_{}'.format(i), conv)
+                
 
                 # activation. if 'linear': no activation
                 if layer_info['activation'] == 'leaky':
