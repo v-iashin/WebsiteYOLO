@@ -1,3 +1,5 @@
+import numpy as np
+
 import torch
 from torch import nn
 
@@ -43,6 +45,7 @@ class Darknet(nn.Module):
     '''Darknet model (YOLO v3)'''
     
     def __init__(self, cfg_path):
+        '''todo'''
         super(Darknet, self).__init__()
         self.layers_info = parse_cfg(cfg_path)
         self.net_info, self.layers_list = self.create_layers(self.layers_info)
@@ -126,6 +129,85 @@ class Darknet(nn.Module):
 
         return predictions
     
+    def load_weights(self, weight_file):
+        '''todo'''
+        r_file = open(weight_file, 'rb')
+        # header consists on version numbers (major, minor, subversion)
+        # and number of images seen by model during training
+        header = np.fromfile(r_file, dtype=np.int32, count=5)
+        # the rest are weights in a form of a vector (not matrix)
+        weights = np.fromfile(r_file, dtype=np.float32)
+
+        idx = 0
+
+        for i, layer in enumerate(self.layers_list):
+            # i+1 because 0th is net_info
+            name = self.layers_info[i+1]['name']
+
+            if name == 'convolutional':
+
+                # some conv layers doesn't have bn layers
+                try:
+                    self.layers_info[i+1]['batch_normalize']
+                    conv, bn = self.layers_list[i][:2]
+
+                    # 1. load and convert the selected weights to a Tensor
+                    # 2. reshape loaded weights as the current ones
+                    # 3. replace the current weights with the loaded ones
+                    # 4. increment the current counter of read weights
+
+                    # num of bn weights
+                    bn_weigth_num = bn.bias.numel()
+
+                    # bn biases
+                    bn_b = torch.Tensor(weights[idx:idx+bn_weigth_num])
+                    bn_b = bn_b.view_as(bn.bias.data)
+                    bn.bias.data.copy_(bn_b)
+                    idx += bn_weigth_num
+
+                    # bn weights
+                    bn_w = torch.Tensor(weights[idx:idx+bn_weigth_num])
+                    bn_w = bn_w.view_as(bn.weight.data)
+                    bn.weight.data.copy_(bn_w)
+                    idx += bn_weigth_num
+
+                    # bn running mean
+                    bn_running_mean = torch.Tensor(weights[idx:idx+bn_weigth_num])
+                    bn_running_mean = bn_running_mean.view_as(bn.running_mean.data)
+                    bn.running_mean.data.copy_(bn_running_mean)
+                    idx += bn_weigth_num
+
+                    # bn running var
+                    bn_running_var = torch.Tensor(weights[idx:idx+bn_weigth_num])
+                    bn_running_var = bn_running_var.view_as(bn.running_var.data)
+                    bn.running_var.data.copy_(bn_running_var)
+                    idx += bn_weigth_num
+
+                    # conv weights (no need to load biases if bn is used)
+                    conv_w_num = conv.weight.numel()
+                    conv_w = torch.Tensor(weights[idx:idx+conv_w_num])
+                    conv_w = conv_w.view_as(conv.weight.data)
+                    conv.weight.data.copy_(conv_w)
+                    idx += conv_w_num
+
+                except KeyError:
+                    conv = self.layers_list[i][0]
+
+                    # conv biases
+                    conv_b_num = conv.bias.numel()
+                    conv_b = torch.Tensor(weights[idx:idx+conv_b_num])
+                    conv_b = conv_b.view_as(conv.bias.data)
+                    idx += conv_b_num
+
+                    # conv weights
+                    conv_w_num = conv.weight.numel()
+                    conv_w = torch.Tensor(weights[idx:idx+conv_w_num])
+                    conv_w = conv_w.view_as(conv.weight.data)
+                    conv.weight.data.copy_(conv_w)
+                    idx += conv_w_num
+
+#                     print('no bn detected at {}'.format(i))
+
     def create_layers(self, layers_info):
         '''An auxiliary fuction that creates a ModuleList given layers_info
         
