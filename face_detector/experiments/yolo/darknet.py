@@ -112,9 +112,9 @@ class Darknet(nn.Module):
                 pwh = pwh.to(device)
 
                 # transform the predictions
-                x[:, :, 0:2] = torch.sigmoid(x[:, :, 0:2]) + cxy
-                x[:, :, 2:4] = pwh * torch.exp(x[:, :, 2:4])
-                x[:, :, 4] = torch.sigmoid(x[:, :, 4]) * stride
+                x[:, :, 0:2] = (torch.sigmoid(x[:, :, 0:2]) + cxy) * stride
+                x[:, :, 2:4] = (pwh * torch.exp(x[:, :, 2:4])) * stride
+                x[:, :, 4] = torch.sigmoid(x[:, :, 4])
                 x[:, :, 5:5+classes] = torch.sigmoid((x[:, :, 5:5+classes]))
 
                 # add new predictions to the list of predictions from all scales
