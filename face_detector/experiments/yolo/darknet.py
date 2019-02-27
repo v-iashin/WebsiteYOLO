@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from utils import parse_cfg
+from utils import parse_cfg, iou_vectorized
 
 # class EmptyLayer(nn.Module):
 #     '''A dummy layer for "route" and "shortcut" layers'''
@@ -45,7 +45,15 @@ class Darknet(nn.Module):
     '''Darknet model (YOLO v3)'''
     
     def __init__(self, cfg_path):
-        '''todo'''
+        '''
+        Initializes Darknet module
+        
+        Argument
+        --------
+        cfg_path: str
+            A path to config file. 
+            Example: github.com/pjreddie/darknet/blob/master/cfg/yolov3.cfg
+        '''
         super(Darknet, self).__init__()
         self.layers_info = parse_cfg(cfg_path)
         self.net_info, self.layers_list = self.create_layers(self.layers_info)
@@ -53,6 +61,23 @@ class Darknet(nn.Module):
         print('NOTE THAT CONV BEFORE YOLO USES (num_classes filters) * num_anch')
         
     def forward(self, x, device):
+        '''
+        Arguments
+        ---------
+        x: torch.FloatTensor
+            An image of size (B, C, H, W).
+        device: torch.device
+            The device to use for calculation: torch.device('cpu'), torch.device('gpu:0')
+            
+        Output
+        ------
+        x: torch.FloatTensor
+            A tensor of size (B, P, 5+classes) with predictions.
+            B -- batch size; P -- number of predictions for an image, 
+            i.e. 3 scales and 3 anchor boxes and
+            For example: P = (13*13 + 26*26 + 52*52) * 3 = 10647;
+            5 + classes -- (cx, cy, w, h, obj_score, {prob_class}).
+        '''
         # cache the outputs for route and shortcut layers
         outputs = []
 
