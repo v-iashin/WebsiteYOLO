@@ -20,7 +20,7 @@ class RouteLayer(nn.Module):
         
 class ShortcutLayer(nn.Module):
     '''Similarly to Routelayer shortcut layer functions as a dummy layer and only saves
-    the index of the output to use the shortcut from'''
+    the index of the layer to use the shortcut from'''
     
     def __init__(self, frm):
         super(ShortcutLayer, self).__init__()
@@ -46,8 +46,6 @@ class Darknet(nn.Module):
     
     def __init__(self, cfg_path):
         '''
-        Initializes Darknet module
-        
         Argument
         --------
         cfg_path: str
