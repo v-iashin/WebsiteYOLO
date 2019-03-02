@@ -57,8 +57,10 @@ class Darknet(nn.Module):
         self.net_info, self.layers_list = self.create_layers(self.layers_info)
         print('shortcut is using output[i-1] instead of x check whether works with x')
         print('NOTE THAT CONV BEFORE YOLO USES (num_classes filters) * num_anch')
+        print('changing predictions in the nms loop make sure that it is not used later')
+        print('not adding +1 in nms')
         
-    def forward(self, x, device):
+    def forward(self, x, device=torch.device('cpu:0')):
         '''
         Arguments
         ---------
@@ -149,7 +151,47 @@ class Darknet(nn.Module):
                     predictions = x
 
             outputs.append(x)
+        
+        # perform non-max supression
+        predictions = self.objectness_filter_and_nms(predictions, classes)
 
+        return predictions
+    
+    def objectness_filter_and_nms(self, predictions, classes, obj_thresh=0.5, nms_thresh=0.4):
+        detections = [None] * len(predictions)
+
+        for i, prediction in enumerate(predictions):
+            objectness_mask = (prediction[:, 4] > obj_thresh)
+            prediction = prediction[objectness_mask]
+
+            # if no object on an image found, continue with the next image
+            if prediction.size(0) == 0:
+                continue
+
+            pred_score, pred_classes = torch.max(prediction[:, 5:5+classes], dim=1, keepdim=True)
+            # detections: (cx, cy, w, h, obj_score, top_class_score, top_class_idx)
+            prediction = torch.cat((prediction[:, :5], pred_score.float(), pred_classes.float()), dim=1)
+            unique_classes = pred_classes.unique().float()
+
+            detections_after_nms = []
+
+            for cls in unique_classes:
+                prediction_4_cls = prediction[prediction[:, 6] == cls]
+                sort_pred_idxs = torch.sort(prediction_4_cls[:, 4], descending=True)[1]
+                prediction_4_cls = prediction_4_cls[sort_pred_idxs]          
+
+                while len(prediction_4_cls) > 0:
+                    detections_after_nms.append(prediction_4_cls[0].unsqueeze(0))
+
+                    if len(prediction_4_cls) == 1:
+                        break
+
+                    ious = iou_vectorized(prediction_4_cls[0, :5].unsqueeze(0), prediction_4_cls[1:, :5])
+                    ious = ious.reshape(-1)
+                    prediction_4_cls = prediction_4_cls[1:][ious < nms_thresh]
+                    
+            predictions = torch.cat(detections_after_nms)
+    
         return predictions
     
     def load_weights(self, weight_file):
