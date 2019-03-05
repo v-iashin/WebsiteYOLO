@@ -117,7 +117,7 @@ def iou_vectorized(bboxes1, bboxes2):
 
     return inner_area / out_area
 
-def objectness_filter_and_nms(predictions, classes, obj_thresh=0.5, nms_thresh=0.4):
+def objectness_filter_and_nms(predictions, classes, obj_thresh=0.8, nms_thresh=0.4):
     '''
     Performs filtering according objectness score and non-maximum supression on predictions.
     

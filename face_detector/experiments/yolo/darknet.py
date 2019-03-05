@@ -156,7 +156,14 @@ class Darknet(nn.Module):
         return predictions
     
     def load_weights(self, weight_file):
-        '''todo'''
+        '''
+        Loads weights from the weight file.
+        
+        Argument
+        --------
+        weight_file: str
+            A part to weights file
+        '''
         r_file = open(weight_file, 'rb')
         # header consists on version numbers (major, minor, subversion)
         # and number of images seen by model during training
@@ -237,12 +244,18 @@ class Darknet(nn.Module):
     def create_layers(self, layers_info):
         '''An auxiliary fuction that creates a ModuleList given layers_info
         
-        Input: layers_info (list): a list containing net info (0th element) and 
-                                   info for each layer (module) specified in the config
-                                   (1: elements).
-        Outputs: net_info, layers_list (tuple): net_info (dict) contains model info
-                                                layers_list (nn.ModuleList) contains list of
-                                                layers.'''
+        Argument
+        --------
+        layers_info: list: 
+            a list containing net info (0th element) and info for each 
+            layer (module) specified in the config (1: elements).
+            
+        Outputs
+        ------
+        net_info, layers_list: (dict, torch.nn.ModuleList)
+            net_info contains model's info.
+            layers_list contains list of layers.
+        '''
         # the first element is not a layer but the network info (lr, batchsize,  ...)
         net_info = layers_info[0]
         # init. the modulelist instead of a list to add all parameters to nn.Module
