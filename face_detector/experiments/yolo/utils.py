@@ -1,4 +1,6 @@
 import torch
+import cv2
+from matplotlib import pyplot as plt
 
 def parse_cfg(file):
     '''
@@ -52,6 +54,8 @@ def parse_cfg(file):
         layers.append(layer)
         
     return layers
+
+# def transform_bboxes()
 
 def iou_vectorized(bboxes1, bboxes2):
     '''
@@ -212,3 +216,41 @@ def objectness_filter_and_nms(predictions, classes, obj_thresh=0.8, nms_thresh=0
         predictions = torch.cat(detections_after_nms)
 
     return predictions
+
+
+def show_predictions(image_path, predictions):
+    '''
+    Displays predictions on the image provided in image_path.
+    
+    Arguments
+    ---------
+    image_path: str
+        A path to an image.
+    predictions: torch.FloatTensor
+        Predictions after objectness filtering and non-max supression.
+    
+    todo:
+    '''
+    top_left_x = predictions[:, 0] - predictions[:, 2]/2
+    top_left_y = predictions[:, 1] - predictions[:, 3]/2
+    bottom_right_x = predictions[:, 0] + predictions[:, 2]/2
+    bottom_right_y = predictions[:, 1] + predictions[:, 3]/2
+
+    top_left_x = top_left_x.detach().int().numpy()
+    top_left_y = top_left_y.detach().int().numpy()
+    bottom_right_x = bottom_right_x.detach().int().numpy()
+    bottom_right_y = bottom_right_y.detach().int().numpy()
+
+    plt.figure(figsize=(7, 7))
+    img = cv2.imread(image_path)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    print('make a proper resize for an image')
+    img = cv2.resize(img, (416, 416))
+    
+    for i in range(len(top_left_x)):
+        cv2.rectangle(img, (top_left_x[i], top_left_y[i]), (bottom_right_x[i], bottom_right_y[i]), (0, 0, 255), 2)
+        cv2.putText(img, str(predictions[i, 6].detach().int().numpy()), (top_left_x[i], top_left_y[i] + 2 + 4), 
+                    cv2.FONT_HERSHEY_PLAIN, 1, [225,255,255], 1)
+
+    plt.imshow(img)
+    plt.show()
