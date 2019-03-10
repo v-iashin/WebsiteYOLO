@@ -55,7 +55,31 @@ def parse_cfg(file):
         
     return layers
 
-# def transform_bboxes()
+def get_transformed_bboxes(bboxes):
+    '''
+    Transforms the bounding boxes coordinate from (cx, cy, w, h) into
+    (top_left_x, top_left_y, bottom_right_x, bottom_right_y), 
+    i.e. into corner coordinates.
+    
+    Argument
+    --------
+    bboxes: torch.FloatTensor
+        A tensor of size (P, D) where D should contain info about the coords
+        in the following order (center_x, center_y, width, height). Note:
+        D can be higher than 4.
+    
+    Outputs
+    -------
+    top_left_x, top_left_y, bottom_right_x, bottom_right_y: torch.FloatTensors
+        Transformed coordinates for bboxes: top-left corner coordinates for x and y
+        and bottom-right coordinates for x and y respectively.
+    '''
+    top_left_x = bboxes[:, 0] - bboxes[:, 2]/2
+    top_left_y = bboxes[:, 1] - bboxes[:, 3]/2
+    bottom_right_x = bboxes[:, 0] + bboxes[:, 2]/2
+    bottom_right_y = bboxes[:, 1] + bboxes[:, 3]/2
+    print(top_left_x.type(), top_left_y.type(), bottom_right_x.type(), bottom_right_y.type())
+    return top_left_x, top_left_y, bottom_right_x, bottom_right_y
 
 def iou_vectorized(bboxes1, bboxes2):
     '''
@@ -79,15 +103,9 @@ def iou_vectorized(bboxes1, bboxes2):
     N, D = bboxes2.shape
     
     # Transform coords of the 1st bboxes (y=0 is at the top, and increases downwards)
-    top_left_x1 = bboxes1[:, 0] - bboxes1[:, 2]/2
-    top_left_y1 = bboxes1[:, 1] - bboxes1[:, 3]/2
-    bottom_right_x1 = bboxes1[:, 0] + bboxes1[:, 2]/2
-    bottom_right_y1 = bboxes1[:, 1] + bboxes1[:, 3]/2
+    top_left_x1, top_left_y1, bottom_right_x1, bottom_right_y1 = get_transformed_bboxes(bboxes1)
     # Transform coords of the 2nd bboxes
-    top_left_x2 = bboxes2[:, 0] - bboxes2[:, 2]/2
-    top_left_y2 = bboxes2[:, 1] - bboxes2[:, 3]/2
-    bottom_right_x2 = bboxes2[:, 0] + bboxes2[:, 2]/2
-    bottom_right_y2 = bboxes2[:, 1] + bboxes2[:, 3]/2
+    top_left_x2, top_left_y2, bottom_right_x2, bottom_right_y2 = get_transformed_bboxes(bboxes2)
 
     # broadcasting 1st bboxes
     top_left_x1 = top_left_x1.view(M, 1)
@@ -143,7 +161,8 @@ def objectness_filter_and_nms(predictions, classes, obj_thresh=0.8, nms_thresh=0
     Output
     ------
     predictions: torch.FloatTensor
-        Predictions after objectness filtering and non-max supression.
+        Predictions after objectness filtering and non-max supression (same size
+        as predictions in arguments but with a different P).
     '''
     
     # iterate for images in a batch
@@ -228,13 +247,11 @@ def show_predictions(image_path, predictions):
         A path to an image.
     predictions: torch.FloatTensor
         Predictions after objectness filtering and non-max supression.
+        A tensor of size (P, 5+classes) -- without 'batch'-dimension
     
     todo:
     '''
-    top_left_x = predictions[:, 0] - predictions[:, 2]/2
-    top_left_y = predictions[:, 1] - predictions[:, 3]/2
-    bottom_right_x = predictions[:, 0] + predictions[:, 2]/2
-    bottom_right_y = predictions[:, 1] + predictions[:, 3]/2
+    top_left_x, top_left_y, bottom_right_x, bottom_right_y = get_transformed_bboxes(predictions)
 
     top_left_x = top_left_x.detach().int().numpy()
     top_left_y = top_left_y.detach().int().numpy()
@@ -245,6 +262,7 @@ def show_predictions(image_path, predictions):
     img = cv2.imread(image_path)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     print('make a proper resize for an image')
+    print('make bboxes on image more pleasant')
     img = cv2.resize(img, (416, 416))
     
     for i in range(len(top_left_x)):
