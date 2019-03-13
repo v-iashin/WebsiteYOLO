@@ -15,6 +15,7 @@ class RouteLayer(nn.Module):
     '''Route layer only saves the indices to access the outputs from the previous layers'''
     
     def __init__(self, routes):
+        '''todo arguments'''
         super(RouteLayer, self).__init__()
         self.routes = routes
         
@@ -23,6 +24,7 @@ class ShortcutLayer(nn.Module):
     the index of the layer to use the shortcut from'''
     
     def __init__(self, frm):
+        '''todo arguments'''
         super(ShortcutLayer, self).__init__()
         self.frm = frm
         
@@ -30,6 +32,7 @@ class YOLOLayer(nn.Module):
     '''Similarly to the previous layers, YOLO layer in defined'''
     
     def __init__(self, anchors, classes, num, jitter, ignore_thresh, truth_thresh, random, in_width):
+        '''todo arguments'''
         super(YOLOLayer, self).__init__()
         self.anchors = anchors
         self.classes = classes
@@ -101,7 +104,6 @@ class Darknet(nn.Module):
             elif name == 'yolo':
                 # input size: (B, (4+1+classes)*num_achors=255, Gi, Gi)
                 B, C, w, h = x.size()
-                print(x.mean())
                 # read layer's info
                 anchors_list = layer[0].anchors
                 classes = layer[0].classes
@@ -346,7 +348,7 @@ class Darknet(nn.Module):
 
                 # add the yolo layer to the list
                 yolo = YOLOLayer(anchors, classes, num, jitter, ignore_thresh, 
-                                           truth_thresh, random, in_width)
+                                 truth_thresh, random, in_width)
                 layer.add_module('yolo_{}'.format(i), yolo)
 
 

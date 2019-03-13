@@ -1,6 +1,8 @@
 import torch
 import cv2
+import numpy as np
 from matplotlib import pyplot as plt
+from matplotlib import cm as colormap
 
 def parse_cfg(file):
     '''
@@ -78,7 +80,7 @@ def get_transformed_bboxes(bboxes):
     top_left_y = bboxes[:, 1] - bboxes[:, 3]/2
     bottom_right_x = bboxes[:, 0] + bboxes[:, 2]/2
     bottom_right_y = bboxes[:, 1] + bboxes[:, 3]/2
-    print(top_left_x.type(), top_left_y.type(), bottom_right_x.type(), bottom_right_y.type())
+
     return top_left_x, top_left_y, bottom_right_x, bottom_right_y
 
 def iou_vectorized(bboxes1, bboxes2):
@@ -236,39 +238,177 @@ def objectness_filter_and_nms(predictions, classes, obj_thresh=0.8, nms_thresh=0
 
     return predictions
 
-
-def show_predictions(image_path, predictions):
+def scale_numbers(num1, num2, largest_num_target):
     '''
-    Displays predictions on the image provided in image_path.
+    Scales two numbers (for example, dimensions) keeping aspect ratio.
+    
+    Arguments
+    ---------
+    num1: float or int
+        The 1st number (dim1).
+    num2: float or int
+        The 2nd number (dim2).
+    largest_num_target: int
+        The expected size of the largest number among 1st and 2nd numbers.
+        
+    Outputs
+    -------
+    : (int, int)
+        Two scaled numbers such that the largest is equal to largest_num_target 
+        maintaining the same aspect ratio as num1 and num2 in input. 
+        Note: two ints are returned.
+        
+    Examples
+    --------
+        scale_numbers(832, 832, 416) -> (416, 416)
+        scale_numbers(223, 111, 416) -> (416, 207)
+        scale_numbers(100, 200, 416) -> (208, 416)
+        scale_numbers(200, 832, 416) -> (100, 416)
+    '''
+    # make sure the arguments are of correct types
+    assert isinstance(largest_num_target, int), 'largest_num_target should be "int"'
+    
+    # to make the largest number to be equal largest_num_target keeping aspect ratio
+    # we need, first, to estimate by how much the largest number is smaller (larger) 
+    # than largest_num_target and, second, to scale both numbers by this ratio.
+    
+    # select the maximum among two numbers
+    max_num = max(num1, num2)
+    # calculate scalling coefficient
+    scale_coeff = largest_num_target / max_num
+    # scale both numbers
+    num1 = num1 * scale_coeff
+    num2 = num2 * scale_coeff
+    
+    # make sure to return ints
+    return int(num1), int(num2)
+
+def letterbox_pad(img, net_input_size, color=(127.5, 127.5, 127.5)):
+    '''
+    Adds padding to an image according to the original implementation of darknet.
+    Specifically, it will pad the image up to (net_input_size x net_input_size) size.
+    
+    Arguments
+    ---------
+    img: numpy.ndarray
+        An image to pad.
+    net_input_size: int
+        The network's input size.
+    color: (float or int, float or int, float or int) \in [0, 255]
+        The RGB intensities. The image will be padded with this color.
+        
+    Output
+    ------
+    img: numpy.ndarray
+        The padded image.
+    pad_sizes: (int, int, int, int)
+        The sizes of paddings. Used in show_prediction module where we need to shift
+        predictions by the size of the padding
+    '''
+    # make sure the arguments are of correct types
+    assert isinstance(img, np.ndarray), '"img" should have numpy.ndarray type'
+    assert isinstance(net_input_size, int), '"net_input_size" should have int type'
+    assert (
+        isinstance(color[0], (int, float)) and 
+        isinstance(color[1], (int, float)) and 
+        isinstance(color[2], (int, float))
+    ), 'each element of "color" should contain either a float or an int'
+    
+    H, W, C = img.shape
+    max_side_len = max(H, W)
+    
+    # if width is higher than height then, to make a squared-shaped image, we need
+    # to pad the height; else, we need to pad width.
+    if W > H:
+        # calculates how much should be padded "on top" which is a half of 
+        # the difference between the target size and the current height
+        pad_top = (max_side_len - H) // 2
+        # another half is added to the bottom
+        pad_bottom = max_side_len - (H + pad_top)
+        pad_left = 0
+        pad_right = 0
+        
+    else:
+        pad_top = 0
+        pad_bottom = 0
+        # calculates how much should be padded "on left" which is a half of 
+        # the difference between the target size and the current width
+        pad_left = (max_side_len - W) // 2
+        pad_right = max_side_len - (W + pad_left)
+    
+    # pad_widths should contain three pairs (because of 3d) of padding sizes:
+    # first pair adds rows [from top and bottom], 
+    # second adds columns [from left to right],
+    # the third adds nothing because we pad only spatially, not channel-wise
+    pad_widths = [[pad_top, pad_bottom], [pad_left, pad_right], [0, 0]]
+    # for each padding we specify a color (constant parameter)
+    color = [[color, color], [color, color], [0, 0]]
+    # perform padding
+    img = np.pad(img, pad_widths, 'constant', constant_values=color)
+    # save padding sizes
+    pad_sizes = (pad_top, pad_bottom, pad_left, pad_right)
+    
+    return img, pad_sizes
+
+def show_predictions(image_path, predictions, classes, net_input_size):
+    '''
+    Shows the predictions on the image provided in image_path.
     
     Arguments
     ---------
     image_path: str
         A path to an image.
     predictions: torch.FloatTensor
-        Predictions after objectness filtering and non-max supression.
-        A tensor of size (P, 5+classes) -- without 'batch'-dimension
-    
-    todo:
+        Predictions after letterbox padding, objectness filtering and non-max supression.
+        A tensor of size (P, 5+classes) -- without 'batch'-dimension.
+        
+    # TODO other args
     '''
-    top_left_x, top_left_y, bottom_right_x, bottom_right_y = get_transformed_bboxes(predictions)
+    # make sure the arguments are of correct types
+    assert isinstance(image_path, str), '"image_path" should be str'
+    assert isinstance(predictions, (torch.FloatTensor, torch.cuda.FloatTensor)), \
+            '"predictions" should be either torch.FloatTensor or torch.cuda.FloatTensor'
+    
+    # parameters of the vizualization
 
+    
+    # First, we transform coordinates (cx, cy, w, h, obj_score, {prob_class}) to
+    # corner coordinates: (top_left_x, top_left_y, bottom_right_x, bottom_right_y)
+    top_left_x, top_left_y, bottom_right_x, bottom_right_y = get_transformed_bboxes(predictions)
+    
+    # detach values from the computation graph, take the int part and transform to numpy arrays
     top_left_x = top_left_x.detach().int().numpy()
     top_left_y = top_left_y.detach().int().numpy()
     bottom_right_x = bottom_right_x.detach().int().numpy()
     bottom_right_y = bottom_right_y.detach().int().numpy()
 
+    # initialize the figure environment
     plt.figure(figsize=(7, 7))
+    # read an image and transform the colors from BGR to RGB
     img = cv2.imread(image_path)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    print('make a proper resize for an image')
+    # resize the image and add letterbox padding if needed
+    H, W, C = img.shape
+    H_new, W_new = scale_numbers(H, W, net_input_size)
+    img = cv2.resize(img, (W_new, H_new))
     print('make bboxes on image more pleasant')
-    img = cv2.resize(img, (416, 416))
     
-    for i in range(len(top_left_x)):
-        cv2.rectangle(img, (top_left_x[i], top_left_y[i]), (bottom_right_x[i], bottom_right_y[i]), (0, 0, 255), 2)
-        cv2.putText(img, str(predictions[i, 6].detach().int().numpy()), (top_left_x[i], top_left_y[i] + 2 + 4), 
-                    cv2.FONT_HERSHEY_PLAIN, 1, [225,255,255], 1)
+    # add each prediction on the image and captures it with a class number
+    for i in range(len(predictions)):
+        # corner coordinates
+        top_left_coords = (top_left_x[i], top_left_y[i])
+        bottom_right_coords = (bottom_right_x[i], bottom_right_y[i])
+        # predicted class
+        class_int = predictions[i, 6].detach().int().numpy()
+        # class_name = predictions[i, 6].detach().int().numpy()
+        # color of bbox
+        
+        
+        # add a bbox
+        cv2.rectangle(img, top_left_coords, bottom_right_coords, (128, 128, 128), 2)
+        # adds the class number
+        cv2.putText(img, str(class_int), (top_left_x[i], top_left_y[i] + 2 + 4), 
+                    cv2.FONT_HERSHEY_PLAIN, 1, [225, 255, 255], 1)
 
     plt.imshow(img)
     plt.show()
