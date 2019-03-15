@@ -58,6 +58,9 @@ class Darknet(nn.Module):
         super(Darknet, self).__init__()
         self.layers_info = parse_cfg(cfg_path)
         self.net_info, self.layers_list = self.create_layers(self.layers_info)
+        # take the number of classes from the last (yolo) layer of the network.
+        self.classes = self.layers_list[-1][0].classes
+        self.in_width = self.layers_list[-1][0].in_width
         print('shortcut is using output[i-1] instead of x check whether works with x')
         print('NOTE THAT CONV BEFORE YOLO USES (num_classes filters) * num_anch')
         print('changing predictions in the nms loop make sure that it is not used later')
@@ -106,7 +109,7 @@ class Darknet(nn.Module):
                 B, C, w, h = x.size()
                 # read layer's info
                 anchors_list = layer[0].anchors
-                classes = layer[0].classes
+                classes = self.classes
                 in_width = layer[0].in_width
                 num_anchs = len(anchors_list)
                 # bbox coords + obj score + class scores

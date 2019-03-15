@@ -57,7 +57,7 @@ def parse_cfg(file):
         
     return layers
 
-def get_transformed_bboxes(bboxes):
+def get_corner_coords(bboxes):
     '''
     Transforms the bounding boxes coordinate from (cx, cy, w, h) into
     (top_left_x, top_left_y, bottom_right_x, bottom_right_y), 
@@ -105,9 +105,9 @@ def iou_vectorized(bboxes1, bboxes2):
     N, D = bboxes2.shape
     
     # Transform coords of the 1st bboxes (y=0 is at the top, and increases downwards)
-    top_left_x1, top_left_y1, bottom_right_x1, bottom_right_y1 = get_transformed_bboxes(bboxes1)
+    top_left_x1, top_left_y1, bottom_right_x1, bottom_right_y1 = get_corner_coords(bboxes1)
     # Transform coords of the 2nd bboxes
-    top_left_x2, top_left_y2, bottom_right_x2, bottom_right_y2 = get_transformed_bboxes(bboxes2)
+    top_left_x2, top_left_y2, bottom_right_x2, bottom_right_y2 = get_corner_coords(bboxes2)
 
     # broadcasting 1st bboxes
     top_left_x1 = top_left_x1.view(M, 1)
@@ -253,17 +253,18 @@ def scale_numbers(num1, num2, largest_num_target):
         
     Outputs
     -------
-    : (int, int)
+    : (int, int, float)
         Two scaled numbers such that the largest is equal to largest_num_target 
-        maintaining the same aspect ratio as num1 and num2 in input. 
+        maintaining the same aspect ratio as num1 and num2 in input. Also,
+        returns a scalling coefficient.
         Note: two ints are returned.
         
     Examples
     --------
-        scale_numbers(832, 832, 416) -> (416, 416)
-        scale_numbers(223, 111, 416) -> (416, 207)
-        scale_numbers(100, 200, 416) -> (208, 416)
-        scale_numbers(200, 832, 416) -> (100, 416)
+        scale_numbers(832, 832, 416) -> (416, 416, 0.5)
+        scale_numbers(223, 111, 416) -> (416, 207, 1.8654708520179373)
+        scale_numbers(100, 200, 416) -> (208, 416, 2.08)
+        scale_numbers(200, 832, 416) -> (100, 416, 0.5)
     '''
     # make sure the arguments are of correct types
     assert isinstance(largest_num_target, int), 'largest_num_target should be "int"'
@@ -280,8 +281,8 @@ def scale_numbers(num1, num2, largest_num_target):
     num1 = num1 * scale_coeff
     num2 = num2 * scale_coeff
     
-    # make sure to return ints
-    return int(num1), int(num2)
+    # making sure that the numbers has int type
+    return int(num1), int(num2), scale_coeff
 
 def letterbox_pad(img, net_input_size, color=(127.5, 127.5, 127.5)):
     '''
@@ -303,7 +304,7 @@ def letterbox_pad(img, net_input_size, color=(127.5, 127.5, 127.5)):
         The padded image.
     pad_sizes: (int, int, int, int)
         The sizes of paddings. Used in show_prediction module where we need to shift
-        predictions by the size of the padding
+        predictions by the size of the padding.
     '''
     # make sure the arguments are of correct types
     assert isinstance(img, np.ndarray), '"img" should have numpy.ndarray type'
@@ -360,7 +361,9 @@ def show_predictions(image_path, predictions, classes, net_input_size):
         A path to an image.
     predictions: torch.FloatTensor
         Predictions after letterbox padding, objectness filtering and non-max supression.
-        A tensor of size (P, 5+classes) -- without 'batch'-dimension.
+        A tensor of size (P, 4+1+2) -- without 'batch'-dimension; includes bbox attributes,
+        objectess score, top class score, and top class index.
+        Note: predictions tensor is not limited to has 7 columns -- it can be more but not less.
         
     # TODO other args
     '''
@@ -370,11 +373,11 @@ def show_predictions(image_path, predictions, classes, net_input_size):
             '"predictions" should be either torch.FloatTensor or torch.cuda.FloatTensor'
     
     # parameters of the vizualization
-
+    figsize = (7, 7)
     
     # First, we transform coordinates (cx, cy, w, h, obj_score, {prob_class}) to
     # corner coordinates: (top_left_x, top_left_y, bottom_right_x, bottom_right_y)
-    top_left_x, top_left_y, bottom_right_x, bottom_right_y = get_transformed_bboxes(predictions)
+    top_left_x, top_left_y, bottom_right_x, bottom_right_y = get_corner_coords(predictions)
     
     # detach values from the computation graph, take the int part and transform to numpy arrays
     top_left_x = top_left_x.detach().int().numpy()
@@ -383,19 +386,24 @@ def show_predictions(image_path, predictions, classes, net_input_size):
     bottom_right_y = bottom_right_y.detach().int().numpy()
 
     # initialize the figure environment
-    plt.figure(figsize=(7, 7))
+    plt.figure(figsize=figsize)
     # read an image and transform the colors from BGR to RGB
     img = cv2.imread(image_path)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    # resize the image and add letterbox padding if needed
+    
+    # since predictions are made for a resized and letterbox padded images, 
+    # the bounding boxes have to be scaled and shifted accordingly
+    # for that we again ..........
     H, W, C = img.shape
-    H_new, W_new = scale_numbers(H, W, net_input_size)
+    H_new, W_new, scale = scale_numbers(H, W, net_input_size)
+#     _, pad_sizes
     img = cv2.resize(img, (W_new, H_new))
+    img, _ = letterbox_pad(img, net_input_size, color=(128, 128, 128))
     print('make bboxes on image more pleasant')
     
     # add each prediction on the image and captures it with a class number
     for i in range(len(predictions)):
-        # corner coordinates
+        # we need to scale and shift corner coordinates because we used the letterbox padding
         top_left_coords = (top_left_x[i], top_left_y[i])
         bottom_right_coords = (bottom_right_x[i], bottom_right_y[i])
         # predicted class
@@ -412,3 +420,7 @@ def show_predictions(image_path, predictions, classes, net_input_size):
 
     plt.imshow(img)
     plt.show()
+    
+    
+# def predict_and_show(image_path, model, device, save=False, save_path=None):
+    
