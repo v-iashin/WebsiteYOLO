@@ -1,8 +1,10 @@
 import torch
 import cv2
 import numpy as np
+
 from matplotlib import pyplot as plt
 from matplotlib import cm as colormap
+from matplotlib.colors import Normalize
 
 def parse_cfg(file):
     '''
@@ -422,5 +424,130 @@ def show_predictions(image_path, predictions, classes, net_input_size):
     plt.show()
     
     
-# def predict_and_show(image_path, model, device, save=False, save_path=None):
+def predict_and_save(img_path, save_path, model, device, labels_path='./data/coco.names', show=False):
+    '''
+    Predicts objects on an image, draws the bounding boxes around the predicted objects,
+    and saves the image.
+    
+    TODO check grammar
+    
+    Arguments
+    ---------
+    image_path: str
+        The path to an image with objects to predict.
+    save_path: str
+        The path for the output image with detected objects.
+    model: Darknet
+        The model which will be used for inference.
+    device: torch.device or str
+        Device for calculations.
+    labels_path: str
+        The path to the object names.
+    show: bool
+        Whether to show the output image with bounding boxes, for example, in jupyter notebook
+    '''
+    # make sure the arguments are of correct types
+    assert isinstance(img_path, str), '"img_path" should be str'
+    assert save_path is None or isinstance(save_path, str), 'save_path should be NoneType or str'
+    assert isinstance(labels_path, str), '"labels_path" should be str'
+#     assert isinstance(model, darknet.Darknet), 'model should be a Darknet module'
+    assert isinstance(device, (torch.device, str)), 'device should be either torch.device or str'
+    assert isinstance(show, bool), 'show should be boolean'
+
+    # parameters of the vizualization: color palette, figsize to show, 
+    # label parameters, jpeg quality
+    norm = Normalize(vmin=0, vmax=model.classes)
+    color_map = colormap.tab10
+    figsize = (15, 15)
+    line_thickness = 2
+    font_face = cv2.FONT_HERSHEY_PLAIN
+    font_scale = 1.1
+    font_color = [255, 255, 255] # white
+    font_thickness = 1
+    jpg_quality = 80
+
+    # make a dict: {class_number: class_name}
+    names = [name.replace('\n', '') for name in open(labels_path, 'r').readlines()]
+    num2name = {num: name for num, name in enumerate(names)}
+
+    # read an image and transform the colors from BGR to RGB
+    img_raw = cv2.imread(img_path)
+    img_raw = cv2.cvtColor(img_raw, cv2.COLOR_BGR2RGB)
+
+    # add letterbox padding and save the pad sizes and scalling coefficient
+    # to use it latter when drawing bboxes on the original image
+    H, W, C = img_raw.shape
+    H_new, W_new, scale = scale_numbers(H, W, model.in_width)
+    img = cv2.resize(img_raw, (W_new, H_new))
+    img, pad_sizes = letterbox_pad(img, model.in_width)
+
+    # HWC -> CHW, scale intensities to [0, 1], send to pytorch, add 'batch-'dimension
+    img = img.transpose((2, 0, 1))
+    img = img / 255
+    img = torch.from_numpy(img).float()
+    img = img.unsqueeze(0)
+
+    # make prediction and apply objectness filtering and nms
+    predictions = model(img, device)
+    predictions = objectness_filter_and_nms(predictions, model.classes)
+
+    # since the predictions are made for a resized and padded images, 
+    # the bounding boxes have to be scaled and shifted back
+    # for that, we shift and scale back the bboxes' attributes
+    pad_top, pad_bottom, pad_left, pad_right = pad_sizes
+    predictions[:, 0] = (predictions[:, 0] - pad_left) / scale
+    predictions[:, 1] = (predictions[:, 1] - pad_top) / scale
+    predictions[:, 2] = predictions[:, 2] / scale
+    predictions[:, 3] = predictions[:, 3] / scale
+
+    # the, transform the coordinates (cx, cy, w, h) into corner coordinates: 
+    # (top_left_x, top_left_y, bottom_right_x, bottom_right_y)
+    top_left_x, top_left_y, bottom_right_x, bottom_right_y = get_corner_coords(predictions)
+
+    # detach values from the computation graph, take the int part and transform to np.ndarray
+    top_left_x = top_left_x.detach().int().numpy()
+    top_left_y = top_left_y.detach().int().numpy()
+    bottom_right_x = bottom_right_x.detach().int().numpy()
+    bottom_right_y = bottom_right_y.detach().int().numpy()
+
+    # if show initialize a figure environment
+    if show:
+        plt.figure(figsize=figsize)
+
+    # add each prediction on the image and captures it with a class number
+    for i in range(len(predictions)):
+
+        ## ADD BBOXES
+        # we need to scale and shift corner coordinates because we used the letterbox padding
+        top_left_coords = (top_left_x[i], top_left_y[i])
+        bottom_right_coords = (bottom_right_x[i], bottom_right_y[i])
+        # predicted class number
+        class_int = int(predictions[i, 6].detach().numpy())
+        # select the color for a class according to its label number and scale it to [0, 255]
+        bbox_color = color_map(class_int)[:3]
+        bbox_color = list(map(lambda x: x * 255, bbox_color))
+        # add a bbox
+        cv2.rectangle(img_raw, top_left_coords, bottom_right_coords, bbox_color, line_thickness)
+
+        ## ADD A LABLE FOR EACH BBOX INSIDE THE RECTANGLE WITH THE SAME COLOR AS THE BBOX ITSELF
+        # predicted class name to put on a bbox
+        class_name = num2name[class_int]
+        # size for the text
+        text_size = cv2.getTextSize(class_name, font_face, font_scale, font_thickness)[0]
+        # bottom right coordinates for the small rectangle for the label
+        bottom_right_coords_ = top_left_coords[0] + text_size[0] + 4, top_left_coords[1] + text_size[1] + 4
+        # adds a small rectangle of the same color to be the background for the label
+        cv2.rectangle(img_raw, top_left_coords, bottom_right_coords_, bbox_color, cv2.FILLED)
+        # position for text
+        xy_position = (top_left_x[i] + 2, top_left_y[i] + text_size[1])
+        # adds the class label
+        cv2.putText(img_raw, class_name, xy_position, font_face, font_scale, font_color, font_thickness)
+
+    # if show, then, show and close the environment
+    if show:
+        plt.imshow(img_raw)
+
+    # RGB -> BGR and save output image
+    img_raw = cv2.cvtColor(img_raw, cv2.COLOR_RGB2BGR)
+    cv2.imwrite(save_path, img_raw, [cv2.IMWRITE_JPEG_QUALITY, jpg_quality])
     
