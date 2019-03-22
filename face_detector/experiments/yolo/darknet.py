@@ -1,3 +1,5 @@
+# TODO: assertions?
+
 import numpy as np
 
 import torch
@@ -12,19 +14,38 @@ from utils import parse_cfg, iou_vectorized
 #         super(EmptyLayer, self).__init__()
         
 class RouteLayer(nn.Module):
-    '''Route layer only saves the indices to access the outputs from the previous layers'''
+    '''Route layer outputs the concatenated outputs from the specified layers.'''
     
     def __init__(self, routes):
-        '''todo arguments'''
+        '''
+        Arguments
+        ---------
+        routes: list
+            A list of indices that correspond to the previous layers. The outputs
+            from these layers will be used as the output from the route layer.
+            
+            Examples:
+            [-4]: the output of the route layer in this case is the 
+                output of the 4th layer before this route layer.
+            [-1, 61]: the output of the route layer is the concatenation
+                of the previous and 61th layers on depth ('channel') dimension.
+        '''
         super(RouteLayer, self).__init__()
         self.routes = routes
         
 class ShortcutLayer(nn.Module):
     '''Similarly to Routelayer shortcut layer functions as a dummy layer and only saves
-    the index of the layer to use the shortcut from'''
+    the index of the layer to use the shortcut from.'''
     
     def __init__(self, frm):
-        '''todo arguments'''
+        '''
+        Arguments
+        ---------
+        frm: int
+            The index of the layer which will be used as the shotcut connection with the 
+            current layer. Think of it as a ResNet's shortcut connection. For more
+            information please see the 'Examples' to RouteLayer.
+        '''
         super(ShortcutLayer, self).__init__()
         self.frm = frm
         
@@ -32,7 +53,29 @@ class YOLOLayer(nn.Module):
     '''Similarly to the previous layers, YOLO layer in defined'''
     
     def __init__(self, anchors, classes, num, jitter, ignore_thresh, truth_thresh, random, in_width):
-        '''todo arguments'''
+        '''
+        Arguments
+        ---------
+        anchors: list
+            A list of tuples of pairs of ints corresponding to initial sizes of 
+            bounding boxes (width and height). In YOLO v3 there are 3 pairs of ints.
+        classes: int
+            The number of classes. In COCO there are 80 classes.
+        num: int
+            The number of anchors. In YOLO v3 there are 9 anchors.
+        jitter: float \in [0, 1]
+            The parameter corresponds to the invariace of the random cropping during
+            training. The larger, the higher the invariance in size and aspect ratio.
+        ignore_thresh: float
+            TODO (The parameter is used for debugging and not important)
+        truth_thresh: float
+            TODO(The parameter is used for debugging and not important)
+        random: int (??)
+            If 1 then YOLO will perform data augmentation to generalize model for resized
+            images (performs resizing).
+        in_width: int
+            The input for a model. `in_width = % 32` should be 0. Example: 416 or 608
+        '''
         super(YOLOLayer, self).__init__()
         self.anchors = anchors
         self.classes = classes
@@ -139,9 +182,9 @@ class Darknet(nn.Module):
                 # to calc the offsets for bbox size we need to scale anchors
                 stride = in_width // w
                 anchors_list = [(anchor[0] / stride, anchor[1] / stride) for anchor in anchors_list]
-                anchors_tens = torch.FloatTensor(anchors_list)
+                anchors_tensor = torch.FloatTensor(anchors_list)
                 # pwh.shape is the same as cxy
-                pwh = anchors_tens.repeat(w * w, 1).unsqueeze(0)
+                pwh = anchors_tensor.repeat(w * w, 1).unsqueeze(0)
                 pwh = pwh.to(device)
 
                 # transform the predictions (center, size, objectness, class scores)
@@ -336,7 +379,7 @@ class Darknet(nn.Module):
                 jitter = float(layer_info['jitter'])
                 ignore_thresh = float(layer_info['ignore_thresh'])
                 truth_thresh = float(layer_info['truth_thresh']) 
-                random = float(layer_info['random']) # float??
+                random = int(layer_info['random']) # int??
                 in_width = int(net_info['width'])
 
                 # masks tells the dector which anchor to use (form: '6,7,8')

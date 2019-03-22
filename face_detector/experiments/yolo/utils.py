@@ -166,7 +166,7 @@ def objectness_filter_and_nms(predictions, classes, obj_thresh=0.8, nms_thresh=0
     ------
     predictions: torch.FloatTensor
         Predictions after objectness filtering and non-max supression (same size
-        as predictions in arguments but with a different P).
+        as predictions in arguments but with a different P). TODO?? actually 5+classes -> 7
     '''
     
     # iterate for images in a batch
@@ -194,7 +194,7 @@ def objectness_filter_and_nms(predictions, classes, obj_thresh=0.8, nms_thresh=0
         # for each prediction we save the class with the maximum class score
         pred_score, pred_classes = torch.max(prediction[:, 5:5+classes], dim=1, keepdim=True)
         # class scores are replaced by the highest class score and corresponding class
-        # detections: (cx, cy, w, h, obj_score, top_class_score, top_class_idx)
+        # predictions: (cx, cy, w, h, obj_score, top_class_score, top_class_idx)
         prediction = torch.cat((prediction[:, :5], pred_score.float(), pred_classes.float()), dim=1)
         # we are going to iterate through classes, so, first, we select the set of unique classes
         unique_classes = pred_classes.unique().float()
@@ -264,7 +264,7 @@ def scale_numbers(num1, num2, largest_num_target):
     Examples
     --------
         scale_numbers(832, 832, 416) -> (416, 416, 0.5)
-        scale_numbers(223, 111, 416) -> (416, 207, 1.8654708520179373)
+        scale_numbers(223, 111, 416) -> (416, 207, 1.865...)
         scale_numbers(100, 200, 416) -> (208, 416, 2.08)
         scale_numbers(200, 832, 416) -> (100, 416, 0.5)
     '''
@@ -352,76 +352,6 @@ def letterbox_pad(img, net_input_size, color=(127.5, 127.5, 127.5)):
     pad_sizes = (pad_top, pad_bottom, pad_left, pad_right)
     
     return img, pad_sizes
-
-def show_predictions(image_path, predictions, classes, net_input_size):
-    '''
-    Shows the predictions on the image provided in image_path.
-    
-    Arguments
-    ---------
-    image_path: str
-        A path to an image.
-    predictions: torch.FloatTensor
-        Predictions after letterbox padding, objectness filtering and non-max supression.
-        A tensor of size (P, 4+1+2) -- without 'batch'-dimension; includes bbox attributes,
-        objectess score, top class score, and top class index.
-        Note: predictions tensor is not limited to has 7 columns -- it can be more but not less.
-        
-    # TODO other args
-    '''
-    # make sure the arguments are of correct types
-    assert isinstance(image_path, str), '"image_path" should be str'
-    assert isinstance(predictions, (torch.FloatTensor, torch.cuda.FloatTensor)), \
-            '"predictions" should be either torch.FloatTensor or torch.cuda.FloatTensor'
-    
-    # parameters of the vizualization
-    figsize = (7, 7)
-    
-    # First, we transform coordinates (cx, cy, w, h, obj_score, {prob_class}) to
-    # corner coordinates: (top_left_x, top_left_y, bottom_right_x, bottom_right_y)
-    top_left_x, top_left_y, bottom_right_x, bottom_right_y = get_corner_coords(predictions)
-    
-    # detach values from the computation graph, take the int part and transform to numpy arrays
-    top_left_x = top_left_x.detach().int().numpy()
-    top_left_y = top_left_y.detach().int().numpy()
-    bottom_right_x = bottom_right_x.detach().int().numpy()
-    bottom_right_y = bottom_right_y.detach().int().numpy()
-
-    # initialize the figure environment
-    plt.figure(figsize=figsize)
-    # read an image and transform the colors from BGR to RGB
-    img = cv2.imread(image_path)
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    
-    # since predictions are made for a resized and letterbox padded images, 
-    # the bounding boxes have to be scaled and shifted accordingly
-    # for that we again ..........
-    H, W, C = img.shape
-    H_new, W_new, scale = scale_numbers(H, W, net_input_size)
-#     _, pad_sizes
-    img = cv2.resize(img, (W_new, H_new))
-    img, _ = letterbox_pad(img, net_input_size, color=(128, 128, 128))
-    print('make bboxes on image more pleasant')
-    
-    # add each prediction on the image and captures it with a class number
-    for i in range(len(predictions)):
-        # we need to scale and shift corner coordinates because we used the letterbox padding
-        top_left_coords = (top_left_x[i], top_left_y[i])
-        bottom_right_coords = (bottom_right_x[i], bottom_right_y[i])
-        # predicted class
-        class_int = predictions[i, 6].detach().int().numpy()
-        # class_name = predictions[i, 6].detach().int().numpy()
-        # color of bbox
-        
-        
-        # add a bbox
-        cv2.rectangle(img, top_left_coords, bottom_right_coords, (128, 128, 128), 2)
-        # adds the class number
-        cv2.putText(img, str(class_int), (top_left_x[i], top_left_y[i] + 2 + 4), 
-                    cv2.FONT_HERSHEY_PLAIN, 1, [225, 255, 255], 1)
-
-    plt.imshow(img)
-    plt.show()
     
     
 def predict_and_save(img_path, save_path, model, device, labels_path='./data/coco.names', show=False):
