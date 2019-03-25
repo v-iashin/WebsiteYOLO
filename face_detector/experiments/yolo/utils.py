@@ -166,7 +166,7 @@ def objectness_filter_and_nms(predictions, classes, obj_thresh=0.8, nms_thresh=0
     ------
     predictions: torch.FloatTensor
         Predictions after objectness filtering and non-max supression (same size
-        as predictions in arguments but with a different P). TODO?? actually 5+classes -> 7
+        as predictions in arguments but with a different P).
     '''
     
     # iterate for images in a batch
@@ -192,10 +192,8 @@ def objectness_filter_and_nms(predictions, classes, obj_thresh=0.8, nms_thresh=0
         # in the list of predictions
         
         # for each prediction we save the class with the maximum class score
-        pred_score, pred_classes = torch.max(prediction[:, 5:5+classes], dim=1, keepdim=True)
-        # class scores are replaced by the highest class score and corresponding class
-        # predictions: (cx, cy, w, h, obj_score, top_class_score, top_class_idx)
-        prediction = torch.cat((prediction[:, :5], pred_score.float(), pred_classes.float()), dim=1)
+        pred_score, pred_classes = torch.max(prediction[:, 5:5+classes], dim=1)
+        
         # we are going to iterate through classes, so, first, we select the set of unique classes
         unique_classes = pred_classes.unique().float()
         
@@ -203,11 +201,12 @@ def objectness_filter_and_nms(predictions, classes, obj_thresh=0.8, nms_thresh=0
         detections_after_nms = []
 
         for cls in unique_classes:
-            # select only the entries for a specific class
-            prediction_4_cls = prediction[prediction[:, 6] == cls]
+            # select only the entries for a specific class.
+            # pred_classes is of torch.LongTensor type but we need torch.FloatTensor
+            prediction_4_cls = prediction[pred_classes.float() == cls]
             # then we sort predictions for a specific class by objectness score (high -> low)
             sort_pred_idxs = torch.sort(prediction_4_cls[:, 4], descending=True)[1]
-            prediction_4_cls = prediction_4_cls[sort_pred_idxs]      
+            prediction_4_cls = prediction_4_cls[sort_pred_idxs]
             
             # next we want to fill out detections_after_nms with only with those objects
             # that has a unique position, i.e. low IoU with other predictions.
@@ -418,21 +417,23 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
     img = img.unsqueeze(0)
 
     # make prediction and apply objectness filtering and nms
-    predictions = model(img, device)
-    predictions = objectness_filter_and_nms(predictions, model.classes)
+    prediction = model(img, device)
+    print(prediction.shape)
+    prediction = objectness_filter_and_nms(prediction, model.classes) # todo check whether it has batch dim
+    print(prediction.shape)
 
     # since the predictions are made for a resized and padded images, 
     # the bounding boxes have to be scaled and shifted back
     # for that, we shift and scale back the bboxes' attributes
     pad_top, pad_bottom, pad_left, pad_right = pad_sizes
-    predictions[:, 0] = (predictions[:, 0] - pad_left) / scale
-    predictions[:, 1] = (predictions[:, 1] - pad_top) / scale
-    predictions[:, 2] = predictions[:, 2] / scale
-    predictions[:, 3] = predictions[:, 3] / scale
+    prediction[:, 0] = (prediction[:, 0] - pad_left) / scale
+    prediction[:, 1] = (prediction[:, 1] - pad_top) / scale
+    prediction[:, 2] = prediction[:, 2] / scale
+    prediction[:, 3] = prediction[:, 3] / scale
 
     # the, transform the coordinates (cx, cy, w, h) into corner coordinates: 
     # (top_left_x, top_left_y, bottom_right_x, bottom_right_y)
-    top_left_x, top_left_y, bottom_right_x, bottom_right_y = get_corner_coords(predictions)
+    top_left_x, top_left_y, bottom_right_x, bottom_right_y = get_corner_coords(prediction)
 
     # detach values from the computation graph, take the int part and transform to np.ndarray
     top_left_x = top_left_x.detach().int().numpy()
@@ -445,14 +446,16 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
         plt.figure(figsize=figsize)
 
     # add each prediction on the image and captures it with a class number
-    for i in range(len(predictions)):
+    for i in range(len(prediction)):
 
         ## ADD BBOXES
         # we need to scale and shift corner coordinates because we used the letterbox padding
         top_left_coords = (top_left_x[i], top_left_y[i])
         bottom_right_coords = (bottom_right_x[i], bottom_right_y[i])
         # predicted class number
-        class_int = int(predictions[i, 6].detach().numpy())
+        class_score, class_int = torch.max(prediction[i, 5:5+model.classes], dim=-1) # todo dim (also see NMS with batch dim)
+        class_score, class_int = float(class_score), int(class_int)
+        
         # select the color for a class according to its label number and scale it to [0, 255]
         bbox_color = color_map(class_int)[:3]
         bbox_color = list(map(lambda x: x * 255, bbox_color))
@@ -481,3 +484,4 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
     img_raw = cv2.cvtColor(img_raw, cv2.COLOR_RGB2BGR)
     cv2.imwrite(save_path, img_raw, [cv2.IMWRITE_JPEG_QUALITY, jpg_quality])
     
+    return prediction

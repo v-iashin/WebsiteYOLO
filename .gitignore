@@ -1,5 +1,5 @@
 .ipynb_checkpoints/
 .DS_Store
 __pycache__
-face_detector/experiments/data/*
+face_detector/experiments/yolo/data/*
 *.weights
