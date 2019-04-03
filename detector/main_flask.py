@@ -29,6 +29,7 @@ YOLOV3_LABELS_PATH = os.path.join(DETECTOR_PATH, 'data/coco.names')
 JPG_QUALITY = 80
 DEVICE = torch.device('cpu:0')
 
+# todo if with methods so it will take less memory
 DARKNET_416 = Darknet(YOLOV3_416_CFG_PATH)
 DARKNET_416.load_weights(YOLOV3_WEIGHTS_PATH)
 DARKNET_416.eval();
@@ -49,13 +50,19 @@ if not os.path.exists(ARCHIVE_PATH):
     
 def show_image_w_bboxes_for_server(img_path, method):
     
+    start = time()
+    
     if method == 'yolo_416_coco':
-        _, img = predict_and_save(img_path, OUTPUT_PATH, DARKNET_416, 
-                                  DEVICE, YOLOV3_LABELS_PATH, show=False)
+        
+        with torch.no_grad():
+            _, img = predict_and_save(img_path, OUTPUT_PATH, DARKNET_416, 
+                                      DEVICE, YOLOV3_LABELS_PATH, show=False)
         
     if method == 'yolo_608_coco':
-        _, img = predict_and_save(img_path, OUTPUT_PATH, DARKNET_608, 
-                                  DEVICE, YOLOV3_LABELS_PATH, show=False)
+        
+        with torch.no_grad():
+            _, img = predict_and_save(img_path, OUTPUT_PATH, DARKNET_608, 
+                                      DEVICE, YOLOV3_LABELS_PATH, show=False)
         
     
     elif method == 'opencv_haar':
@@ -72,9 +79,13 @@ def show_image_w_bboxes_for_server(img_path, method):
     else:
         raise Exception('Undefined method: "{}"'.format(method))
     
-    archive_full_path = os.path.join(ARCHIVE_PATH, f'{time()}.jpg')
+    filename = f'{time()}.jpg'
+    archive_full_path = os.path.join(ARCHIVE_PATH, filename)
     cv2.imwrite(archive_full_path, img, [cv2.IMWRITE_JPEG_QUALITY, JPG_QUALITY])
     cv2.imwrite(OUTPUT_PATH, img, [cv2.IMWRITE_JPEG_QUALITY, JPG_QUALITY])
+    
+    print(f'Processing time of {filename}: {round(time() - start, 2)} sec.')
+    print('=' * 50)
 
 @app.route('/', methods=['GET', 'POST'])
 def upload_file():

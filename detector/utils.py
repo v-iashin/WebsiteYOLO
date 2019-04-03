@@ -501,9 +501,9 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
 
     # make prediction and apply objectness filtering and nms
     prediction = model(img, device)
-    print(prediction.shape)
+#     print(prediction.shape)
     prediction = objectness_filter_and_nms(prediction, model.classes) # todo check whether it has batch dim
-    print(prediction.shape)
+#     print(prediction.shape)
 
     # since the predictions are made for a resized and padded images, 
     # the bounding boxes have to be scaled and shifted back
