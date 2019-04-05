@@ -247,9 +247,10 @@ def objectness_filter_and_nms(predictions, classes, obj_thresh=0.8, nms_thresh=0
         
     Output
     ------
-    predictions: torch.FloatTensor
+    predictions: torch.FloatTensor or None
         Predictions after objectness filtering and non-max supression (same size
-        as predictions in arguments but with a different P).
+        as predictions in arguments but with a different P). Returns None when
+        there no detections found.
     '''
     
     # iterate for images in a batch
@@ -257,8 +258,13 @@ def objectness_filter_and_nms(predictions, classes, obj_thresh=0.8, nms_thresh=0
         ## objectness thresholding
         
         # If prediction's (bbox') score is higher than obj_thress keep the prediction
-        # the fourth (fifth) element is objectness score
+        # the fourth (fifth) element is objectness score; if there are no
+        # detections with obj score higher than obj_thresh, return None
         objectness_mask = (prediction[:, 4] > obj_thresh)
+        
+        if len(torch.nonzero(objectness_mask)) == 0:
+            return None
+        
         prediction = prediction[objectness_mask]
 
         # if no object on an image found, continue with the next image
@@ -499,11 +505,34 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
     img = torch.from_numpy(img).float()
     img = img.unsqueeze(0)
 
-    # make prediction and apply objectness filtering and nms
+    # make prediction
     prediction = model(img, device)
-    print(prediction.shape)
+    # and apply objectness filtering and nms. If returns None, draw a box that states it
     prediction = objectness_filter_and_nms(prediction, model.classes) # todo check whether it has batch dim
-    print(prediction.shape)
+    
+
+    ### if no objects have been detected draw one rectangle on the perimeter of the 
+    # img_raw with text that no objects are found. for comments for this if condition 
+    # please see the for-loop below
+    if prediction is None:
+        font_scale = 2
+        font_thickness = 2
+        top_left_coords = (0, 0)
+        bbox_color = (0, 0, 0)
+        font_color = (255, 255, 255)
+        text = 'No objects found :-('
+        text_size = cv2.getTextSize(text, font_face, font_scale, font_thickness)[0]
+        bottom_right_coords_ = top_left_coords[0] + text_size[0] + 12, top_left_coords[1] + text_size[1] + 12
+        xy_position = (2, 5 + text_size[1])
+        cv2.rectangle(img_raw, top_left_coords, bottom_right_coords_, bbox_color, cv2.FILLED)
+        cv2.putText(img_raw, text, xy_position, font_face, font_scale, font_color, font_thickness)
+        if show:
+            plt.imshow(img_raw)
+        img_raw = cv2.cvtColor(img_raw, cv2.COLOR_RGB2BGR)
+        cv2.imwrite(save_path, img_raw, [cv2.IMWRITE_JPEG_QUALITY, jpg_quality])
+
+        return None
+    ###
 
     # since the predictions are made for a resized and padded images, 
     # the bounding boxes have to be scaled and shifted back
