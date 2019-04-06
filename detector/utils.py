@@ -531,7 +531,7 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
         img_raw = cv2.cvtColor(img_raw, cv2.COLOR_RGB2BGR)
         cv2.imwrite(save_path, img_raw, [cv2.IMWRITE_JPEG_QUALITY, jpg_quality])
 
-        return None
+        return None, img_raw
     ###
 
     # since the predictions are made for a resized and padded images, 
@@ -596,4 +596,4 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
     img_raw = cv2.cvtColor(img_raw, cv2.COLOR_RGB2BGR)
     cv2.imwrite(save_path, img_raw, [cv2.IMWRITE_JPEG_QUALITY, jpg_quality])
     
-    return prediction
+    return prediction, img_raw
