@@ -531,7 +531,7 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
         img_raw = cv2.cvtColor(img_raw, cv2.COLOR_RGB2BGR)
         cv2.imwrite(save_path, img_raw, [cv2.IMWRITE_JPEG_QUALITY, jpg_quality])
 
-        return None
+        return None, img_raw
     ###
 
     # since the predictions are made for a resized and padded images, 
@@ -561,9 +561,11 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
     for i in range(len(prediction)):
 
         ## ADD BBOXES
-        # we need to scale and shift corner coordinates because we used the letterbox padding
-        top_left_coords = (top_left_x[i], top_left_y[i])
-        bottom_right_coords = (bottom_right_x[i], bottom_right_y[i])
+        # first we need to extract coords for both top left and bottom right corners
+        # note: sometimes, the corner coordinates lie outside of the image itself
+        # hence we need to keep them on image -> min and max
+        top_left_coords = max(0, top_left_x[i]), max(0, top_left_y[i])
+        bottom_right_coords = min(W, bottom_right_x[i]), min(H, bottom_right_y[i])
         # predicted class number
         class_score, class_int = torch.max(prediction[i, 5:5+model.classes], dim=-1) # todo dim (also see NMS with batch dim)
         class_score, class_int = float(class_score), int(class_int)
@@ -596,4 +598,4 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
     img_raw = cv2.cvtColor(img_raw, cv2.COLOR_RGB2BGR)
     cv2.imwrite(save_path, img_raw, [cv2.IMWRITE_JPEG_QUALITY, jpg_quality])
     
-    return prediction
+    return prediction, img_raw

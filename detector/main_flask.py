@@ -54,12 +54,14 @@ def show_image_w_bboxes_for_server(img_path, method):
     
     if method == 'yolo_416_coco':
         
+        # with torch.no_grad() seems to help with the RAM overflow
         with torch.no_grad():
             _, img = predict_and_save(img_path, OUTPUT_PATH, DARKNET_416, 
                                       DEVICE, YOLOV3_LABELS_PATH, show=False)
         
-    if method == 'yolo_608_coco':
+    elif method == 'yolo_608_coco':
         
+        # with torch.no_grad() seems to help with the RAM overflow
         with torch.no_grad():
             _, img = predict_and_save(img_path, OUTPUT_PATH, DARKNET_608, 
                                       DEVICE, YOLOV3_LABELS_PATH, show=False)

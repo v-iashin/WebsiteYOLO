@@ -561,9 +561,11 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
     for i in range(len(prediction)):
 
         ## ADD BBOXES
-        # we need to scale and shift corner coordinates because we used the letterbox padding
-        top_left_coords = (top_left_x[i], top_left_y[i])
-        bottom_right_coords = (bottom_right_x[i], bottom_right_y[i])
+        # first we need to extract coords for both top left and bottom right corners
+        # note: sometimes, the corner coordinates lie outside of the image itself
+        # hence we need to keep them on image -> min and max
+        top_left_coords = max(0, top_left_x[i]), max(0, top_left_y[i])
+        bottom_right_coords = min(W, bottom_right_x[i]), min(H, bottom_right_y[i])
         # predicted class number
         class_score, class_int = torch.max(prediction[i, 5:5+model.classes], dim=-1) # todo dim (also see NMS with batch dim)
         class_score, class_int = float(class_score), int(class_int)
@@ -583,8 +585,8 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
         bottom_right_coords_ = top_left_coords[0] + text_size[0] + 4, top_left_coords[1] + text_size[1] + 4
         # adds a small rectangle of the same color to be the background for the label
         cv2.rectangle(img_raw, top_left_coords, bottom_right_coords_, bbox_color, cv2.FILLED)
-        # position for text
-        xy_position = (top_left_x[i] + 2, top_left_y[i] + text_size[1])
+        # position for text (for min and max comments see calculation of corner coordinates)
+        xy_position = max(0, top_left_x[i]) + 2, max(0, top_left_y[i]) + text_size[1]
         # adds the class label
         cv2.putText(img_raw, class_name, xy_position, font_face, font_scale, font_color, font_thickness)
 
