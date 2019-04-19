@@ -12,15 +12,17 @@ from matplotlib import pyplot as plt
 from utils import parse_cfg, predict_and_save
 from darknet import Darknet
 
+
+###
 PROJECT_PATH = './PersonalProjects/'
 
 PROJ_TEMP_PATH = os.path.join(PROJECT_PATH, 'proj_tmp')
 ARCHIVE_PATH = os.path.join(PROJ_TEMP_PATH, 'upload_archive')
 INPUT_PATH = os.path.join(PROJ_TEMP_PATH, 'input.jpg')
 OUTPUT_PATH = os.path.join(PROJ_TEMP_PATH, 'output.jpg')
+LOG_PATH = os.path.join(PROJ_TEMP_PATH, 'log.txt')
 
 DETECTOR_PATH = os.path.join(PROJECT_PATH, 'detector')
-HAAR_WEIGHTS_PATH = os.path.join(DETECTOR_PATH, 'weights/haarcascade_frontalface_default.xml')
 YOLOV3_WEIGHTS_PATH = os.path.join(DETECTOR_PATH, 'weights/yolov3.weights')
 YOLOV3_416_CFG_PATH = os.path.join(DETECTOR_PATH, 'cfg/yolov3_416x416.cfg')
 YOLOV3_608_CFG_PATH = os.path.join(DETECTOR_PATH, 'cfg/yolov3_608x608.cfg')
@@ -36,47 +38,50 @@ DARKNET_416.eval();
 DARKNET_608 = Darknet(YOLOV3_608_CFG_PATH)
 DARKNET_608.load_weights(YOLOV3_WEIGHTS_PATH)
 DARKNET_608.eval();
-HAAR_DETECTOR = cv2.CascadeClassifier(HAAR_WEIGHTS_PATH)
 
 METHOD = 'yolo_608_coco'
+###
 
+# start Flask application
 app = Flask(__name__)
 CORS(app)
 
 assert os.path.exists(PROJECT_PATH), f'{PROJECT_PATH} does not exist. Consider to git clone the repo.'
     
+# if there is no folder for archiving, create
 if not os.path.exists(ARCHIVE_PATH):
     os.makedirs(ARCHIVE_PATH)
     
 def show_image_w_bboxes_for_server(img_path, method):
+    '''
+    Reads an image from the disk and applies a detection algorithm specified in method.
     
+    Arguments
+    ---------
+    img_path: str
+        A path to an image.
+    method: str ('yolo_416_coco', 'yolo_608_coco')
+        Method to apply to the image.
+    '''
+    
+    # I want to log the processing time for each image
     start = time()
     
+    # select the method and apply it
+    # torch.no_grad() seems to help with the RAM overflow
+    # predict_and_save returns both img with predictions and tensor with
+    # predictions
     if method == 'yolo_416_coco':
         
-        # with torch.no_grad() seems to help with the RAM overflow
         with torch.no_grad():
             _, img = predict_and_save(img_path, OUTPUT_PATH, DARKNET_416, 
                                       DEVICE, YOLOV3_LABELS_PATH, show=False)
         
     elif method == 'yolo_608_coco':
         
-        # with torch.no_grad() seems to help with the RAM overflow
         with torch.no_grad():
             _, img = predict_and_save(img_path, OUTPUT_PATH, DARKNET_608, 
                                       DEVICE, YOLOV3_LABELS_PATH, show=False)
-        
-    
-    elif method == 'opencv_haar':
-        img = cv2.imread(img_path)
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        img_gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-        faces = HAAR_DETECTOR.detectMultiScale(img_gray, scaleFactor=1.1, minNeighbors=5)
-        
-        for x, y, w, h in faces:
-            cv2.rectangle(img, (x, y), (x+w, y+h), (0, 255, 0), 2)
-            
-        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
             
     else:
         raise Exception('Undefined method: "{}"'.format(method))
@@ -86,8 +91,11 @@ def show_image_w_bboxes_for_server(img_path, method):
     cv2.imwrite(archive_full_path, img, [cv2.IMWRITE_JPEG_QUALITY, JPG_QUALITY])
     cv2.imwrite(OUTPUT_PATH, img, [cv2.IMWRITE_JPEG_QUALITY, JPG_QUALITY])
     
-    print(f'Processing time of {filename}: {round(time() - start, 2)} sec.')
+    elapsed_time = round(time() - start, 2)
+    
+    print(f'Processing time of {filename}: {elapsed_time} sec.')
     print('=' * 50)
+
 
 @app.route('/', methods=['GET', 'POST'])
 def upload_file():
@@ -97,7 +105,6 @@ def upload_file():
         files = request.files['file']
         files.save(INPUT_PATH)
         file_size = os.path.getsize(INPUT_PATH)
-#         show_image_w_bboxes_for_server(INPUT_PATH, 'opencv_haar')
         show_image_w_bboxes_for_server(INPUT_PATH, method)
 
         with open(OUTPUT_PATH, 'rb') as in_f:

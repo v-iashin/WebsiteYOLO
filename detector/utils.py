@@ -447,8 +447,6 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
     Predicts objects on an image, draws the bounding boxes around the predicted objects,
     and saves the image.
     
-    TODO check grammar
-    
     Arguments
     ---------
     image_path: str
@@ -463,6 +461,15 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
         The path to the object names.
     show: bool
         Whether to show the output image with bounding boxes, for example, in jupyter notebook
+        
+    Outputs
+    -------
+    prediction: torch.FloatTensor or NoneType
+        Predictions of a size (<number of detected objects>, 4+1+<number of classes>). 
+        prediction is NoneType when no object has been detected on an image.
+    
+    img_raw: numpy.ndarray
+        A resulting image with bounding objects drawn on it.
     '''
     # make sure the arguments are of correct types
     assert isinstance(img_path, str), '"img_path" should be str'

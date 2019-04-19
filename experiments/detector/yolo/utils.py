@@ -447,8 +447,6 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
     Predicts objects on an image, draws the bounding boxes around the predicted objects,
     and saves the image.
     
-    TODO check grammar
-    
     Arguments
     ---------
     image_path: str
@@ -463,6 +461,15 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
         The path to the object names.
     show: bool
         Whether to show the output image with bounding boxes, for example, in jupyter notebook
+        
+    Outputs
+    -------
+    prediction: torch.FloatTensor or NoneType
+        Predictions of a size (<number of detected objects>, 4+1+<number of classes>). 
+        prediction is NoneType when no object has been detected on an image.
+    
+    img_raw: numpy.ndarray
+        A resulting image with bounding objects drawn on it.
     '''
     # make sure the arguments are of correct types
     assert isinstance(img_path, str), '"img_path" should be str'
@@ -585,8 +592,8 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
         bottom_right_coords_ = top_left_coords[0] + text_size[0] + 4, top_left_coords[1] + text_size[1] + 4
         # adds a small rectangle of the same color to be the background for the label
         cv2.rectangle(img_raw, top_left_coords, bottom_right_coords_, bbox_color, cv2.FILLED)
-        # position for text
-        xy_position = (top_left_x[i] + 2, top_left_y[i] + text_size[1])
+        # position for text (for min and max comments see calculation of corner coordinates)
+        xy_position = max(0, top_left_x[i]) + 2, max(0, top_left_y[i]) + text_size[1]
         # adds the class label
         cv2.putText(img_raw, class_name, xy_position, font_face, font_scale, font_color, font_thickness)
 
