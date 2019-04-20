@@ -85,12 +85,14 @@ def show_image_w_bboxes_for_server(img_path, method):
             
     else:
         raise Exception('Undefined method: "{}"'.format(method))
-    
+        
+    # selecting a name for a file for archiving
     filename = f'{time()}.jpg'
     archive_full_path = os.path.join(ARCHIVE_PATH, filename)
     cv2.imwrite(archive_full_path, img, [cv2.IMWRITE_JPEG_QUALITY, JPG_QUALITY])
     cv2.imwrite(OUTPUT_PATH, img, [cv2.IMWRITE_JPEG_QUALITY, JPG_QUALITY])
     
+    # calculating elapsed time and printing it to flask console
     elapsed_time = round(time() - start, 2)
     
     print(f'Processing time of {filename}: {elapsed_time} sec.')
@@ -99,25 +101,51 @@ def show_image_w_bboxes_for_server(img_path, method):
 
 @app.route('/', methods=['GET', 'POST'])
 def upload_file():
+    '''
+    Handles a request. If a request to '/' is of the type POST, hangle the image 
+    and add predictions on it; if a request of the type GET, return a notification
+    that GET request has been received.
+    
+    Outputs
+    -------
+    flask.wrappers.Response (POST), str (GET):
+        Outputs the json with filename and image fields (POST); returns a string 
+        if a GET request is sent.
+    '''
 
     if request.method == 'POST':
         method = METHOD
+        # access files in the request. See the line: 'form_data.append('file', blob);'
         files = request.files['file']
+        # save the image ('file') to the disk
         files.save(INPUT_PATH)
-        file_size = os.path.getsize(INPUT_PATH)
+        # run the predictions on the saved image
         show_image_w_bboxes_for_server(INPUT_PATH, method)
-
+        
+        # 'show_image_w_bboxes_for_server' saved the output image to the OUTPUT_PATH
+        # now we would like to make a byte-file from the save image and sent
+        # it back to the user
         with open(OUTPUT_PATH, 'rb') as in_f:
+            # so we read an image and decode it into utf-8 string and append it 
+            # to data:image/jpeg;base64 and then return it.
             img_b64 = b64encode(in_f.read()).decode('utf-8')
             img_b64 = 'data:image/jpeg;base64, ' + img_b64
-
-        return jsonify(name='input.jpg', size=file_size, image=str(img_b64))
+    
+        return jsonify(name='input.jpg', image=str(img_b64))
 
     elif request.method == 'GET':
         return 'GET request received'
     
 @app.route('/status_check', methods=['GET'])
 def status_check():
+    '''
+    This endpoint for the status check indicator on the site.
+    
+    Output
+    ------
+    str:
+        Returns a string if a GET request is sent.
+    '''
 
     if request.method == 'GET':
         return 'GET request received'
