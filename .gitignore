@@ -4,3 +4,5 @@ __pycache__
 detector/experiments/yolo/data/*
 *.weights
 proj_tmp/
+WIDER*
+Submission_example.zip
