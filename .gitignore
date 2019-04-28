@@ -6,3 +6,6 @@ detector/experiments/yolo/data/*
 proj_tmp/
 WIDER*
 Submission_example.zip
+Submission_example/
+wider_face_split.zip
+wider_face_split/
