@@ -109,12 +109,14 @@ class Darknet(nn.Module):
         print('changing predictions in the nms loop make sure that it is not used later')
         print('not adding +1 in nms')
         
-    def forward(self, x, device):
+    def forward(self, x, targets=None, device):
         '''
         Arguments
         ---------
         x: torch.FloatTensor
             An image of size (B, C, H, W).
+        targets: TODO:
+            TODO:
         device: torch.device
             The device to use for calculation: torch.device('cpu'), torch.device('gpu:0')
             
@@ -127,9 +129,14 @@ class Darknet(nn.Module):
             i.e. 3 scales and 3 anchor boxes and
             For example: P = (13*13 + 26*26 + 52*52) * 3 = 10647;
             5 + classes -- (cx, cy, w, h, obj_score, {prob_class}).
+            
+        loss: TODO:
+            TODO:
         '''
         # cache the outputs for route and shortcut layers
         outputs = []
+        # initialize total loss that is going to increment at each scale
+        total_loss = 0
 
         for i, layer in enumerate(self.layers_list):
             # i+1 because 0th is net_info
@@ -192,18 +199,25 @@ class Darknet(nn.Module):
                 x[:, :, 2:4] = (pwh * torch.exp(x[:, :, 2:4])) * stride
                 x[:, :, 4] = torch.sigmoid(x[:, :, 4])
                 x[:, :, 5:5+classes] = torch.sigmoid((x[:, :, 5:5+classes]))
+                
+                # We prepare targets at each scale as it depends on the number of 
+                # grid cells. So, we cannot do this once in, let's say, __init__().
+                # prepared_targets = prepare_targets(targets)
+                # calculate loss
+                # loss(x, prepared_targets)
 
                 # add new predictions to the list of predictions from all scales
                 # if variable does exist
                 try:
                     predictions = torch.cat((predictions, x), dim=1)
+                    # total_loss += 
 
                 except NameError:
                     predictions = x
 
             outputs.append(x)
-
-        return predictions
+        
+        return predictions#, total_loss
     
     def load_weights(self, weight_file):
         '''
