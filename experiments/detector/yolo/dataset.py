@@ -1,5 +1,13 @@
 import os
+import json
+from tqdm import tqdm
+
 import cv2
+
+import torch
+from torch.utils.data.dataset import Dataset
+
+from utils import scale_numbers, letterbox_pad
 
 '''
 The dataset folder is expected to have
@@ -31,6 +39,66 @@ The dataset folder is expected to have
         (similar to ./WIDER_train/)
 '''
 
+class WIDERdataset(Dataset):
+    
+    def __init__(self, json_path, phase, model_in_width):
+        
+        with open(json_path, 'r') as fread:
+            self.meta = json.load(fread)
+            
+        self.meta = {int(key): val for key, val in self.meta.items()}
+        self.phase = phase
+        self.model_in_width = model_in_width
+        
+    def __getitem__(self, index):
+        
+        if self.phase in ['train', 'val']:
+            full_file_path, size_HW, gt_bboxes = self.meta[index].values()
+            # top_left_x, top_left_y, w, h, blur, expr, illum, inv, occl, pose
+            gt_bboxes = torch.tensor(gt_bboxes).float()
+            # transforms corner bbox coords into center coords
+            gt_bboxes[:, 0] = gt_bboxes[:, 0] + gt_bboxes[:, 2] // 2
+            gt_bboxes[:, 1] = gt_bboxes[:, 1] + gt_bboxes[:, 3] // 2
+            
+        elif self.phase == 'test':
+            full_file_path, size_HW = self.meta[index].values()
+            
+        H, W = size_HW
+        img = cv2.imread(full_file_path)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+        # add letterbox padding and save the pad sizes and scalling coefficient
+        # to use it latter when drawing bboxes on the original image
+        H_new, W_new, scale = scale_numbers(H, W, self.model_in_width)
+        img = cv2.resize(img, (W_new, H_new))
+        img, (pad_top, pad_bottom, pad_left, pad_right) = letterbox_pad(img)
+        
+        # scale all bbox coordinates and dimensions to fit resizing
+        gt_bboxes[:, :4] = gt_bboxes[:, :4] * scale
+        
+        # shift center coordinates (x and y) to fit letterbox padding
+        gt_bboxes[:, 0] = gt_bboxes[:, 0] + pad_left
+        gt_bboxes[:, 1] = gt_bboxes[:, 1] + pad_top
+        
+        # scale bbox coordinates and dimensions to [0, 1]
+        gt_bboxes[:, :4] = gt_bboxes[:, :4] / self.model_in_width
+        
+        # transforms
+#         img = img.transpose((2, 0, 1))
+#         img = img / 255
+#         img = torch.from_numpy(img).float()
+#         img = img.unsqueeze(0)
+        
+        # batch index and face class number are going to be 0
+        two_columns_with_zeros = torch.zeros(len(gt_bboxes), 2)
+        print(two_columns_with_zeros.shape, gt_bboxes.shape)
+        targets = torch.cat([two_columns_with_zeros, gt_bboxes], dim=1)
+    
+        return img, targets
+
+    def __len__(self):
+        return len(self.meta)
+
 def read_wider_meta(data_root_path, phase):
     '''
     Parses WIDER ground truth data.
@@ -38,17 +106,17 @@ def read_wider_meta(data_root_path, phase):
     Argument
     --------
     data_root_path: str
-        A path to the ground truth dataset. It is expected to have the '.txt'
+        A path to the ground truth dataset. It is expected to have the '.txt' files
         extension.
         
     Output
     ------
     meta: dict
-        A map between a file path and another dict that contain image size (size_HW)
-        of this file and a list of lists containing ground truth bounding box 
-        coordinates (top_left_x, top_left_y, w, h) and attributes (blur, expression, 
-        illumination, invalid, occlusion, pose) (gt_bboxes). 
-        For more information about the attributes see readme.txt.
+        A map between a training example number (index)and and another dict which 
+        contains file path  image size (size_HW) of this file and a list of lists 
+        containing ground truth bounding box coordinates (top_left_x, top_left_y, w, h) --
+        ints and attributes (blur, expression, illumination, invalid, occlusion, pose) 
+        (gt_bboxes) -- binary. For more information about the attributes see readme.txt.
         
     Dataset Head
     ------------
@@ -83,21 +151,26 @@ def read_wider_meta(data_root_path, phase):
         0--Parade/0_Parade_marchingband_1_120.jpg
         ...
     '''
-    
-    images_path = os.path.join(data_root_path, f'WIDER_{phase}/images')
-    
+    # depending on the phase we change the paths    
     if phase in ['train', 'val']:
         meta_path = os.path.join(data_root_path, f'wider_face_split/wider_face_{phase}_bbx_gt.txt')
     
     elif phase == 'test':
         meta_path = os.path.join(data_root_path, f'wider_face_split/wider_face_test_filelist.txt')
+        
+    images_path = os.path.join(data_root_path, f'WIDER_{phase}/images')
+    
     
     meta = {}
+    # index for a training example
+    idx = 0
 
     with open(meta_path, 'r') as rfile:
         
         # since the files is going to be read line-by-line we don't know
-        # how many lines are there. Hence 'while True' loop.
+        # how many lines are there. Also, it's been decided not to use 
+        # for-loop because it would add a lot of 'if's and 'continue' lines. 
+        # Hence 'while True' loop.
         while True:
             # short_file_path is always followed by bbox_count in train and val
             # whereas in test set only file names are presented.
@@ -107,18 +180,28 @@ def read_wider_meta(data_root_path, phase):
             short_file_path = rfile.readline().replace('\n', '')
             
             # if the end of the file reached, return
-            if short_file_path == ''
+            if short_file_path == '':
                 rfile.close()
                 return meta
             
             # join the path inside the dataset with the path to dataset
             full_file_path = os.path.join(images_path, short_file_path)
             
+            # also, the size of an image is going to be stored
+            H, W, C = cv2.imread(full_file_path).shape
+            
+            # file_info is going to contain image path, size and g.t. bboxes if available
+            file_info = {
+                'full_file_path': full_file_path, 
+                'size_HW': (H, W)
+            }
+            
+            
+            # if it is a test file we don't have g.t. bbox info
             if phase == 'test':
-                # also, the size of an image is going to be stored
-                H, W, C = cv2.imread(full_file_path).shape
-                
-                meta[full_file_path] = {'size_HW': (H, W)}
+                # add image size to meta
+                meta[idx] = file_info
+                idx += 1
                 continue
             
             # bbox_count how many g.t. bboxes are going to be for this image
@@ -137,7 +220,7 @@ def read_wider_meta(data_root_path, phase):
 
                 gt_bboxes.append(attributes)
             
-            # make a dict with the size info and gg_boxes for this image
-            # and add this info to the meta dict
-            file_info = {'size_HW': (H, W), 'gt_bboxes': gt_bboxes}
-            meta[full_file_path] = file_info
+            # add gt_boxes info to file_info and add this dict to the meta dict
+            file_info['gt_bboxes'] = gt_bboxes
+            meta[idx] = file_info
+            idx += 1

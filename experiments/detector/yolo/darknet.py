@@ -109,7 +109,7 @@ class Darknet(nn.Module):
         print('changing predictions in the nms loop make sure that it is not used later')
         print('not adding +1 in nms')
         
-    def forward(self, x, targets=None, device):
+    def forward(self, x, device):
         '''
         Arguments
         ---------

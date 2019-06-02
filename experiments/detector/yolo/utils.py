@@ -59,6 +59,12 @@ def parse_cfg(file):
         
     return layers
 
+def get_center_coords(bboxes): #top_left_x, top_left_y, box_w, box_h
+    '''todo: comment on generality'''
+    bboxes[:, 0] = bboxes[:, 0] + bboxes[:, 2] // 2
+    bboxes[:, 1] = bboxes[:, 1] + bboxes[:, 3] // 2
+    return bboxes
+
 def get_corner_coords(bboxes):
     '''
     Transforms the bounding boxes coordinate from (cx, cy, w, h) into
@@ -291,7 +297,8 @@ def scale_numbers(num1, num2, largest_num_target):
     # making sure that the numbers has int type
     return int(num1), int(num2), scale_coeff
 
-def letterbox_pad(img, net_input_size, color=(127.5, 127.5, 127.5)):
+# def letterbox_pad(img, net_input_size, color=(127.5, 127.5, 127.5)):
+def letterbox_pad(img, color=(127.5, 127.5, 127.5)):    
     '''
     Adds padding to an image according to the original implementation of darknet.
     Specifically, it will pad the image up to (net_input_size x net_input_size) size.
@@ -300,8 +307,8 @@ def letterbox_pad(img, net_input_size, color=(127.5, 127.5, 127.5)):
     ---------
     img: numpy.ndarray
         An image to pad.
-    net_input_size: int
-        The network's input size.
+#    net_input_size: int
+#        The network's input size.
     color: (float or int, float or int, float or int) \in [0, 255]
         The RGB intensities. The image will be padded with this color.
         
@@ -311,11 +318,11 @@ def letterbox_pad(img, net_input_size, color=(127.5, 127.5, 127.5)):
         The padded image.
     pad_sizes: (int, int, int, int)
         The sizes of paddings. Used in show_prediction module where we need to shift
-        predictions by the size of the padding.
+        predictions by the size of the padding. order: top, bottom, left, right
     '''
     # make sure the arguments are of correct types
     assert isinstance(img, np.ndarray), '"img" should have numpy.ndarray type'
-    assert isinstance(net_input_size, int), '"net_input_size" should have int type'
+#     assert isinstance(net_input_size, int), '"net_input_size" should have int type'
     assert (
         isinstance(color[0], (int, float)) and 
         isinstance(color[1], (int, float)) and 
@@ -421,7 +428,7 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
     H, W, C = img_raw.shape
     H_new, W_new, scale = scale_numbers(H, W, model.in_width)
     img = cv2.resize(img_raw, (W_new, H_new))
-    img, pad_sizes = letterbox_pad(img, model.in_width)
+    img, pad_sizes = letterbox_pad(img)
 
     # HWC -> CHW, scale intensities to [0, 1], send to pytorch, add 'batch-'dimension
     img = img.transpose((2, 0, 1))
