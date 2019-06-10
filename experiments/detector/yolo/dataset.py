@@ -41,7 +41,7 @@ The dataset folder is expected to have
 
 class WIDERdataset(Dataset):
     
-    def __init__(self, json_path, phase, model_in_width):
+    def __init__(self, json_path, phase, model_in_width, transforms=None):
         
         with open(json_path, 'r') as fread:
             self.meta = json.load(fread)
@@ -49,52 +49,54 @@ class WIDERdataset(Dataset):
         self.meta = {int(key): val for key, val in self.meta.items()}
         self.phase = phase
         self.model_in_width = model_in_width
+        self.transforms = transforms
         
     def __getitem__(self, index):
         
         if self.phase in ['train', 'val']:
             full_file_path, size_HW, gt_bboxes = self.meta[index].values()
+            
+        elif self.phase == 'test':
+            full_file_path, size_HW = self.meta[index].values()
+
+        # read image and invert colors BGR -> RGB
+        img = cv2.imread(full_file_path)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+        # add letterbox padding and save the pad sizes and scalling coefficient
+        # to use it to shift the bboxes' coordinates
+        H, W = size_HW
+        H_new, W_new, scale = scale_numbers(H, W, self.model_in_width)
+        img = cv2.resize(img, (W_new, H_new))
+        img, (pad_top, pad_bottom, pad_left, pad_right) = letterbox_pad(img)
+        
+        if self.phase in ['train', 'val']:
             # top_left_x, top_left_y, w, h, blur, expr, illum, inv, occl, pose
             gt_bboxes = torch.tensor(gt_bboxes).float()
             # transforms corner bbox coords into center coords
             gt_bboxes[:, 0] = gt_bboxes[:, 0] + gt_bboxes[:, 2] // 2
             gt_bboxes[:, 1] = gt_bboxes[:, 1] + gt_bboxes[:, 3] // 2
             
-        elif self.phase == 'test':
-            full_file_path, size_HW = self.meta[index].values()
-            
-        H, W = size_HW
-        img = cv2.imread(full_file_path)
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            # scale all bbox coordinates and dimensions to fit resizing
+            gt_bboxes[:, :4] = gt_bboxes[:, :4] * scale
 
-        # add letterbox padding and save the pad sizes and scalling coefficient
-        # to use it latter when drawing bboxes on the original image
-        H_new, W_new, scale = scale_numbers(H, W, self.model_in_width)
-        img = cv2.resize(img, (W_new, H_new))
-        img, (pad_top, pad_bottom, pad_left, pad_right) = letterbox_pad(img)
+            # shift center coordinates (x and y) to fit letterbox padding
+            gt_bboxes[:, 0] = gt_bboxes[:, 0] + pad_left
+            gt_bboxes[:, 1] = gt_bboxes[:, 1] + pad_top
+
+            # scale bbox coordinates and dimensions to [0, 1]
+            gt_bboxes[:, :4] = gt_bboxes[:, :4] / self.model_in_width
+            
+            # batch index and face class number are going to be 0
+            two_columns_with_zeros = torch.zeros(len(gt_bboxes), 2)
+            print(two_columns_with_zeros.shape, gt_bboxes.shape)
+            targets = torch.cat([two_columns_with_zeros, gt_bboxes], dim=1)
+            
+            return img, targets
         
-        # scale all bbox coordinates and dimensions to fit resizing
-        gt_bboxes[:, :4] = gt_bboxes[:, :4] * scale
-        
-        # shift center coordinates (x and y) to fit letterbox padding
-        gt_bboxes[:, 0] = gt_bboxes[:, 0] + pad_left
-        gt_bboxes[:, 1] = gt_bboxes[:, 1] + pad_top
-        
-        # scale bbox coordinates and dimensions to [0, 1]
-        gt_bboxes[:, :4] = gt_bboxes[:, :4] / self.model_in_width
-        
-        # transforms
-#         img = img.transpose((2, 0, 1))
-#         img = img / 255
-#         img = torch.from_numpy(img).float()
-#         img = img.unsqueeze(0)
-        
-        # batch index and face class number are going to be 0
-        two_columns_with_zeros = torch.zeros(len(gt_bboxes), 2)
-        print(two_columns_with_zeros.shape, gt_bboxes.shape)
-        targets = torch.cat([two_columns_with_zeros, gt_bboxes], dim=1)
+        elif self.phase == 'test':
     
-        return img, targets
+            return img, None
 
     def __len__(self):
         return len(self.meta)
