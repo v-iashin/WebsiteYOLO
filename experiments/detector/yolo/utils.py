@@ -91,7 +91,7 @@ def get_corner_coords(bboxes):
 
     return top_left_x, top_left_y, bottom_right_x, bottom_right_y
 
-def iou_vectorized(bboxes1, bboxes2):
+def iou_vectorized(bboxes1, bboxes2, without_center_coords=False):
     '''
     Calculates intersection over union between every bbox in bboxes1 with
     every bbox in bboxes2, i.e. Cartesian product of both sets.
@@ -99,9 +99,13 @@ def iou_vectorized(bboxes1, bboxes2):
     Arguments
     ---------
     bboxes1: torch.FloatTensor
-        (M, 4) shapped tensor with M bboxes with 4 bbox coordinates (cx, cy, w, h).
+        (M, 4 + *) shapped tensor with M bboxes with 4 bbox coordinates (cx, cy, w, h, *).
     bboxes2: torch.FloatTensor
-        (N, 4) shapped tensor with M bboxes with 4 bbox coordinates (cx, cy, w, h).
+        (N, 4 + *) shapped tensor with M bboxes with 4 bbox coordinates (cx, cy, w, h, *).
+    without_center_coords: bool
+        True: IoU is calculated only using width and height (no center coordinates).
+        It is useful on training when the best bbox is selected to replace the gt bbox.
+        Note: bboxes1 and bboxes2 are expected to have (M, 2 + *) and (N, 2 + *), respectively.
         
     Output
     ------
@@ -109,6 +113,11 @@ def iou_vectorized(bboxes1, bboxes2):
         (M, N) shapped tensor with (i, j) corresponding to IoU between i-th bbox 
         from bboxes1 with j-th bbox from bboxes2.
     '''
+    # add 'fake' center coordinates. You can use any value, we use zeros
+    if without_center_coords:
+        bboxes1 = torch.cat([torch.zeros_like(bboxes1[:, :2]), bboxes1], dim=1)
+        bboxes2 = torch.cat([torch.zeros_like(bboxes2[:, :2]), bboxes2], dim=1)
+    
     M, D = bboxes1.shape
     N, D = bboxes2.shape
     
