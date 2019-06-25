@@ -168,7 +168,13 @@ def get_corner_coords(bboxes):
 
     return top_left_x, top_left_y, bottom_right_x, bottom_right_y
 
-def iou_vectorized(bboxes1, bboxes2):
+def get_center_coords(bboxes): #top_left_x, top_left_y, box_w, box_h
+    '''todo: comment on generality'''
+    bboxes[:, 0] = bboxes[:, 0] + bboxes[:, 2] // 2
+    bboxes[:, 1] = bboxes[:, 1] + bboxes[:, 3] // 2
+    return bboxes
+
+def iou_vectorized(bboxes1, bboxes2, without_center_coords=False):
     '''
     Calculates intersection over union between every bbox in bboxes1 with
     every bbox in bboxes2, i.e. Cartesian product of both sets.
@@ -176,9 +182,13 @@ def iou_vectorized(bboxes1, bboxes2):
     Arguments
     ---------
     bboxes1: torch.FloatTensor
-        (M, 4) shapped tensor with M bboxes with 4 bbox coordinates (cx, cy, w, h).
+        (M, 4 + *) shapped tensor with M bboxes with 4 bbox coordinates (cx, cy, w, h, *).
     bboxes2: torch.FloatTensor
-        (N, 4) shapped tensor with M bboxes with 4 bbox coordinates (cx, cy, w, h).
+        (N, 4 + *) shapped tensor with M bboxes with 4 bbox coordinates (cx, cy, w, h, *).
+    without_center_coords: bool
+        True: IoU is calculated only using width and height (no center coordinates).
+        It is useful on training when the best bbox is selected to replace the gt bbox.
+        Note: bboxes1 and bboxes2 are expected to have (M, 2 + *) and (N, 2 + *), respectively.
         
     Output
     ------
@@ -186,6 +196,11 @@ def iou_vectorized(bboxes1, bboxes2):
         (M, N) shapped tensor with (i, j) corresponding to IoU between i-th bbox 
         from bboxes1 with j-th bbox from bboxes2.
     '''
+    # add 'fake' center coordinates. You can use any value, we use zeros
+    if without_center_coords:
+        bboxes1 = torch.cat([torch.zeros_like(bboxes1[:, :2]), bboxes1], dim=1)
+        bboxes2 = torch.cat([torch.zeros_like(bboxes2[:, :2]), bboxes2], dim=1)
+    
     M, D = bboxes1.shape
     N, D = bboxes2.shape
     
@@ -374,7 +389,8 @@ def scale_numbers(num1, num2, largest_num_target):
     # making sure that the numbers has int type
     return int(num1), int(num2), scale_coeff
 
-def letterbox_pad(img, net_input_size, color=(127.5, 127.5, 127.5)):
+# def letterbox_pad(img, net_input_size, color=(127.5, 127.5, 127.5)):
+def letterbox_pad(img, color=(127.5, 127.5, 127.5)): 
     '''
     Adds padding to an image according to the original implementation of darknet.
     Specifically, it will pad the image up to (net_input_size x net_input_size) size.
@@ -383,8 +399,8 @@ def letterbox_pad(img, net_input_size, color=(127.5, 127.5, 127.5)):
     ---------
     img: numpy.ndarray
         An image to pad.
-    net_input_size: int
-        The network's input size.
+#    net_input_size: int
+#        The network's input size.
     color: (float or int, float or int, float or int) \in [0, 255]
         The RGB intensities. The image will be padded with this color.
         
@@ -394,11 +410,11 @@ def letterbox_pad(img, net_input_size, color=(127.5, 127.5, 127.5)):
         The padded image.
     pad_sizes: (int, int, int, int)
         The sizes of paddings. Used in show_prediction module where we need to shift
-        predictions by the size of the padding.
+        predictions by the size of the padding. order: top, bottom, left, right
     '''
     # make sure the arguments are of correct types
     assert isinstance(img, np.ndarray), '"img" should have numpy.ndarray type'
-    assert isinstance(net_input_size, int), '"net_input_size" should have int type'
+#     assert isinstance(net_input_size, int), '"net_input_size" should have int type'
     assert (
         isinstance(color[0], (int, float)) and 
         isinstance(color[1], (int, float)) and 
@@ -504,7 +520,7 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
     H, W, C = img_raw.shape
     H_new, W_new, scale = scale_numbers(H, W, model.in_width)
     img = cv2.resize(img_raw, (W_new, H_new))
-    img, pad_sizes = letterbox_pad(img, model.in_width)
+    img, pad_sizes = letterbox_pad(img)
 
     # HWC -> CHW, scale intensities to [0, 1], send to pytorch, add 'batch-'dimension
     img = img.transpose((2, 0, 1))
@@ -586,16 +602,18 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
         ## ADD A LABLE FOR EACH BBOX INSIDE THE RECTANGLE WITH THE SAME COLOR AS THE BBOX ITSELF
         # predicted class name to put on a bbox
         class_name = num2name[class_int]
+        # text to name a box: class name and the probability in percents
+        text = f'{class_name} {(class_score * 100):.0f}%'
         # size for the text
-        text_size = cv2.getTextSize(class_name, font_face, font_scale, font_thickness)[0]
+        text_size = cv2.getTextSize(text, font_face, font_scale, font_thickness)[0]
         # bottom right coordinates for the small rectangle for the label
         bottom_right_coords_ = top_left_coords[0] + text_size[0] + 4, top_left_coords[1] + text_size[1] + 4
         # adds a small rectangle of the same color to be the background for the label
         cv2.rectangle(img_raw, top_left_coords, bottom_right_coords_, bbox_color, cv2.FILLED)
         # position for text (for min and max comments see calculation of corner coordinates)
         xy_position = max(0, top_left_x[i]) + 2, max(0, top_left_y[i]) + text_size[1]
-        # adds the class label
-        cv2.putText(img_raw, class_name, xy_position, font_face, font_scale, font_color, font_thickness)
+        # adds the class label with confidence
+        cv2.putText(img_raw, text, xy_position, font_face, font_scale, font_color, font_thickness)
 
     # if show, then, show and close the environment
     if show:

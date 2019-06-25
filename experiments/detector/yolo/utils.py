@@ -519,16 +519,18 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
         ## ADD A LABLE FOR EACH BBOX INSIDE THE RECTANGLE WITH THE SAME COLOR AS THE BBOX ITSELF
         # predicted class name to put on a bbox
         class_name = num2name[class_int]
+        # text to name a box: class name and the probability in percents
+        text = f'{class_name} {(class_score * 100):.0f}'
         # size for the text
-        text_size = cv2.getTextSize(class_name, font_face, font_scale, font_thickness)[0]
+        text_size = cv2.getTextSize(text, font_face, font_scale, font_thickness)[0]
         # bottom right coordinates for the small rectangle for the label
         bottom_right_coords_ = top_left_coords[0] + text_size[0] + 4, top_left_coords[1] + text_size[1] + 4
         # adds a small rectangle of the same color to be the background for the label
         cv2.rectangle(img_raw, top_left_coords, bottom_right_coords_, bbox_color, cv2.FILLED)
         # position for text (for min and max comments see calculation of corner coordinates)
         xy_position = max(0, top_left_x[i]) + 2, max(0, top_left_y[i]) + text_size[1]
-        # adds the class label
-        cv2.putText(img_raw, class_name, xy_position, font_face, font_scale, font_color, font_thickness)
+        # adds the class label with confidence
+        cv2.putText(img_raw, text, xy_position, font_face, font_scale, font_color, font_thickness)
 
     # if show, then, show and close the environment
     if show:
