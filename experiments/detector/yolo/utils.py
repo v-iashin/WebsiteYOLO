@@ -155,7 +155,8 @@ def iou_vectorized(bboxes1, bboxes2, without_center_coords=False):
     out_area1 = (bottom_right_x1 - top_left_x1) * (bottom_right_y1 - top_left_y1)
     out_area2 = (bottom_right_x2 - top_left_x2) * (bottom_right_y2 - top_left_y2)
     out_area = out_area1 + out_area2 - inner_area
-
+    print(inner_area)
+    print(out_area)
     return inner_area / out_area
 
 def objectness_filter_and_nms(predictions, classes, obj_thresh=0.8, nms_thresh=0.4):
