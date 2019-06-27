@@ -147,16 +147,16 @@ def iou_vectorized(bboxes1, bboxes2, without_center_coords=False):
     # clamp(x, min=0) = max(x, 0)
     # we make sure that the area is 0 if size of a side is negative
     # which means that inner_top_left_x > inner_bottom_right_x which is not feasible
-    a = torch.clamp(inner_bottom_right_x - inner_top_left_x, min=0)
-    b = torch.clamp(inner_bottom_right_y - inner_top_left_y, min=0)
+    # Note: adding one because the coordinates starts at 0 and let's
+    a = torch.clamp(inner_bottom_right_x - inner_top_left_x + 1, min=0)
+    b = torch.clamp(inner_bottom_right_y - inner_top_left_y + 1, min=0)
     inner_area = a * b
 
     # finally we calculate union for each pair of bboxes
-    out_area1 = (bottom_right_x1 - top_left_x1) * (bottom_right_y1 - top_left_y1)
-    out_area2 = (bottom_right_x2 - top_left_x2) * (bottom_right_y2 - top_left_y2)
+    out_area1 = (bottom_right_x1 - top_left_x1 + 1) * (bottom_right_y1 - top_left_y1 + 1)
+    out_area2 = (bottom_right_x2 - top_left_x2 + 1) * (bottom_right_y2 - top_left_y2 + 1)
     out_area = out_area1 + out_area2 - inner_area
-    print(inner_area)
-    print(out_area)
+
     return inner_area / out_area
 
 def objectness_filter_and_nms(predictions, classes, obj_thresh=0.8, nms_thresh=0.4):
