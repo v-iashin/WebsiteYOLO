@@ -447,7 +447,7 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
     img = img.unsqueeze(0)
 
     # make prediction
-    prediction = model(img, device)
+    prediction, loss = model(img, device)
     # and apply objectness filtering and nms. If returns None, draw a box that states it
     prediction = objectness_filter_and_nms(prediction, model.classes) # todo check whether it has batch dim
     

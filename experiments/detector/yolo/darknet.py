@@ -90,7 +90,7 @@ class YOLOLayer(nn.Module):
 class Darknet(nn.Module):
     '''Darknet model (YOLO v3)'''
     
-    def __init__(self, cfg_path):
+    def __init__(self, cfg_path, noobj_coeff):
         '''
         Argument
         --------
@@ -108,14 +108,19 @@ class Darknet(nn.Module):
         print('NOTE THAT CONV BEFORE YOLO USES (num_classes filters) * num_anch')
         print('changing predictions in the nms loop make sure that it is not used later')
         print('not adding +1 in nms')
+        print('loss: w and h aren"t put through sqroot' )
+        self.noobj_coeff = noobj_coeff
+        self.obj_coeff = obj_coeff
+        self.bce_loss = nn.BCELoss()
+        self.mse_loss = nn.MSELoss()
         
-    def forward(self, x, device):
+    def forward(self, x, targets=None, device=torch.device('cpu')):
         '''
         Arguments
         ---------
         x: torch.FloatTensor
             An image of size (B, C, H, W).
-        targets: TODO:
+        target: TODO:
             TODO:
         device: torch.device
             The device to use for calculation: torch.device('cpu'), torch.device('gpu:0')
@@ -155,6 +160,7 @@ class Darknet(nn.Module):
                 x = torch.cat(to_cat, dim=1)
 
             elif name == 'yolo':
+                torch.save(x, '/home/vladimir/PersonalProjects/experiments/detector/yolo/ok.pt')
                 # input size: (B, (4+1+classes)*num_achors=255, Gi, Gi)
                 B, C, w, h = x.size()
                 # read layer's info
@@ -193,31 +199,59 @@ class Darknet(nn.Module):
                 # pwh.shape is the same as cxy
                 pwh = anchors_tensor.repeat(w * w, 1).unsqueeze(0)
                 pwh = pwh.to(device)
-
+                
                 # transform the predictions (center, size, objectness, class scores)
-                x[:, :, 0:2] = (torch.sigmoid(x[:, :, 0:2]) + cxy) * stride
-                x[:, :, 2:4] = (pwh * torch.exp(x[:, :, 2:4])) * stride
+                sigma_txy = torch.sigmoid(x[:, :, 0:2])
+                twh = x[:, :, 2:4]
+                x[:, :, 0:2] = (sigma_txy + cxy) * stride
+                x[:, :, 2:4] = (pwh * torch.exp(twh)) * stride
                 x[:, :, 4] = torch.sigmoid(x[:, :, 4])
                 x[:, :, 5:5+classes] = torch.sigmoid((x[:, :, 5:5+classes]))
-                
-                # We prepare targets at each scale as it depends on the number of 
-                # grid cells. So, we cannot do this once in, let's say, __init__().
-                # prepared_targets = prepare_targets(targets)
-                # calculate loss
-                # loss(x, prepared_targets)
+
+                if targets is not None:
+                    # We prepare targets at each scale as it depends on the 
+                    # number of grid cells. So, we cannot do this once in, 
+                    # let's say, __init__().
+                    ious, cls_mask, obj_mask, noobj_mask, gt_x, gt_y, gt_w, gt_h, gt_cls = self.make_targets(
+                        x, targets, anchors_tensor, ignore_thresh, device
+                    )
+                    gt_conf = obj_mask.float()
+                    
+                    # calculate loss (todo: replace it with a separate function)
+                    # checks whether at least one object has been detected
+                    if obj_mask.any():
+                        # todo: docs more motivation and explanation
+                        # (1) Localization loss
+                        loss_x = self.mse_loss(x[:, :, 0][obj_mask], gt_x[obj_mask])
+                        loss_y = self.mse_loss(x[:, :, 1][obj_mask], gt_y[obj_mask])
+                        loss_w = self.mse_loss(x[:, :, 2][obj_mask], gt_w[obj_mask])
+                        loss_h = self.mse_loss(x[:, :, 3][obj_mask], gt_h[obj_mask])
+                        # (2) Confidence loss
+                        # todo: check how to simplify the following three lines
+                        loss_conf_obj = self.bce_loss(x[:, :, 4][obj_mask], obj_mask.float()[obj_mask])
+                        loss_conf_noobj = self.bce_loss(x[:, :, 4][noobj_mask], obj_mask.float()[noobj_mask])
+                        loss_conf = self.obj_coef * loss_conf_obj + self.noobj_coef * loss_conf_noobj
+                        # (3) Classification loss
+                        loss_cls = self.bce_loss(x[:, :, 5:5+classes][obj_mask], gt_cls[obj_mask])
+                        total_loss = loss_x + loss_y + loss_w + loss_h + loss_conf + loss_cls
+                    # in case no object has been detected (confidence loss part 2)
+                    else:
+                        total_loss = self.noobj_coef * self.bce_loss(x[:, :, 4][noobj_mask], gt_conf[noobj_mask])
 
                 # add new predictions to the list of predictions from all scales
                 # if variable does exist
                 try:
                     predictions = torch.cat((predictions, x), dim=1)
-                    # total_loss += 
 
                 except NameError:
                     predictions = x
 
             outputs.append(x)
+            
+        if targets is None:
+            total_loss = 0
         
-        return predictions#, total_loss
+        return predictions, total_loss
     
     def load_weights(self, weight_file):
         '''
@@ -419,3 +453,176 @@ class Darknet(nn.Module):
 
         print('make_layers returns net_info as well. check whether it"s necessary')
         return net_info, layers_list
+    
+    def make_targets(predictions, targets, anchors, ignore_thresh, device):
+        '''
+        Builds the neccessary g.t. masks and bbox attributes. It is expected to be 
+        used at each scale of Darknet.
+
+        Arguments
+        ---------
+        predictions: torch.FloatTensor
+            Predictions \in (B, P, 5+classes) where P = A * (w * h)
+        targets: torch.FloatTensor
+            Ground Truth bboxes and their classes. The tensor has
+            the number of rows according to the number of g.t. bboxes
+            in the whole batch and 6 columns: 
+                - the image idx within the batch;
+                - the g.t. label corresponding to this bbox;
+                - center coordinates x, y \in (0, 1);
+                - bbox w and h 
+            Note: the coordinates account for letter padding which means 
+                  that the coordinates for the center are shifted accordingly
+        anchors: torch.FloatTensor
+            A tensor with anchors of size (num_anchs, 2) with width and height
+            lengths in  the number of grid cells they may overlap at the current 
+            scale. Anchors are the config anchors divided by the stride 
+            (= model_input_size [416 or 608] // number_of_grid_cells_on_one_side).
+        ignore_thresh: float
+            A threshold is a hyper-parameter that is used only when noobjectness
+            mask (noobj_mask) is generated (see the code for insights).
+        device: torch.device
+            A device to put the tensors on.
+
+        Outputs
+        -------
+        iou_scores: torch.FloatTensor
+            A tensor of size (B, num_anchs, w, h), where w and h represent grid size.
+            Contains all zeros except for the IoUs at [img_idx, best_anchors, gj, gi] 
+            between:
+                a) predicted bboxes (at the positions of anchors with the highest 
+                IoU with g.t. bboxes at a (gj, gi) grid-cell) and
+                b) the g.t. (target) bboxes. 
+            In other words, we take a g.t. bbox, look at the anchor which fits it best,
+            find the same exact location (gj, gi) and anchor (best_anchors) 
+            at image (img_idx) in the predictions and calculate IoU between them.
+            At other predictions, which g.t. doesn't cover, it is 0.
+            Used later for the estimation of metrics.
+        class_mask: torch.FloatTensor
+            A tensor of size (B, num_anchs, w, h), where w and h represent grid size. 
+            Contains all zeros except for ones at [img_idx, best_anchors, gj, gi] if 
+            a predicted class at [img_idx, best_anchors, gj, gi] matches the g.t.
+            label.
+            Used later for the estimation of metrics.
+        obj_mask: torch.ByteTensor
+            A tensor of size (B, num_anchs, w, h), where w and h represent grid size. 
+            Contains all zeros except for ones at [img_idx, best_anchors, gj, gi].
+            The same as class mask but less strict: it is one regardless of whether
+            the predicted label matches the g.t. label.
+            Used later for the estimation of the loss and metrics.
+        noobj_mask: torch.ByteTensor
+            A tensor of size (B, num_anchs, w, h), where w and h represent grid size. 
+            A mask which is an opposite to obj_mask. It has zeros where obj_mask has
+            ones and also where IoU betwee g.t. and anchors are higher than 
+            ignore_thresh.
+            Used later for the estimation of the loss and metrics.
+        gt_x, gt_y: torch.FloatTensor, torch.FloatTensor
+            Tensors of size (B, num_anchs, w, h), where w and h represent grid size.
+            Contain the values in [0, 1] at [img_idx, best_anchors, gj, gi] at x and y
+            which represent the position of the center of the g.t. bbox w.r.t
+            the top-left corner of the corresponding cell (gi, gi).
+            For example, if the g.t. bbox' center coordinates are (3.57, 12.3), the
+            tx and ty at [img_idx, best_anchors, gj, gi] are going to be (0.57 and 0.3).
+            Used later for the estimation of the loss.
+        gt_w, gt_h: torch.FloatTensor, torch.FloatTensor
+            Tensors of size (B, num_anchs, w, h), where w and h represent grid size.
+            Contain the values in (log(0), log(w)] and (log(0), log(h)] respectively 
+            at [img_idx, best_anchors, gj, gi] for both width and height other are 0s
+            and represent the log-transformation of the g.t. coefficient that is used
+            to multiply the anchors to fit the dimensions of the g.t. bboxes.
+            Used later for the estimation of the loss.
+        gt_cls: torch.FloatTensor
+            A tensor of size !(B, num_anchs, w, h, num_classes)!.
+            One-hot-encoding of the g.t. label at [img_idx, best_anchors, gj, gi].
+            Used later for the estimation of the loss.
+
+            # TODO: gt_cls == obj_mask.sum(dim=-1)??
+        '''
+        EPS = 1e-16
+
+        # first derive B, h, w, num_anchs, and num_feats
+        B, P, num_feats = predictions.size()
+        num_anchs = len(anchors)
+        w = int((P / num_anchs) ** 0.5)
+        h = w
+        classes = num_feats - 4 - 1
+        # reshape tensors so that it is easier to use them in building targets
+        predictions = predictions.view(B, w, h, num_anchs, num_feats)
+        predictions = predictions.permute(0, 3, 1, 2, 4).contiguous()
+        # predicitons are now of size (B, num_anchs, w, h, num_feats)
+
+        B, num_anchs, w, h, num_feats = predictions.size()
+
+        # create the placeholders
+        noobj_mask = torch.ones(B, num_anchs, w, h, device=device).byte()
+        obj_mask = torch.zeros_like(noobj_mask).byte()
+        class_mask = torch.zeros_like(noobj_mask).float()
+        iou_scores = torch.zeros_like(noobj_mask).float()
+        gt_x = torch.zeros_like(noobj_mask).float()
+        gt_y = torch.zeros_like(noobj_mask).float()
+        gt_w = torch.zeros_like(noobj_mask).float()
+        gt_h = torch.zeros_like(noobj_mask).float()
+        gt_cls = torch.zeros(B, num_anchs, w, h, num_feats-5, device=device).float()
+
+        # image index within the batch, the g.t. label of an object on the image
+        img_idx, gt_class_int = targets[:, :2].long().t()
+        # ground truth center coordinates and bbox dimensions
+        # since the target bbox coordinates are in (0, 1) but we predict on one
+        # of the 3 scales (YOLOv3) we multiply it by the number of grid cells
+        # todo: more motivation?
+        cxy = targets[:, 2:4] * w # or * h
+        bwh = targets[:, 4:] * w # or * h
+        # ious between scaled anchors (anchors_from_cfg / stride) and gt bboxes
+        gt_anchor_ious = iou_vectorized(anchors, bwh, without_center_coords=True)
+        # selecting the best anchors for the g.t. bboxes
+        best_ious, best_anchors = gt_anchor_ious.max(dim=0)
+
+        cx, cy = cxy.t()
+        bw, bh = bwh.t()
+        # remove a decimal part -> grid_i, grid_j point to the top left coord
+        # for a grid cell to which an object will correspond
+        gi, gj = cxy.long().t()
+        # helps with RuntimeError: CUDA error: device-side assert triggered
+        # This aims to avoid grid_i[i] and grid_j[i] exceeding bound of size[2, 3] 
+        # of noobj_mask.
+    #     gi[gi < 0] = 0
+    #     gj[gj < 0] = 0
+    #     gi[gi > w - 1] = w - 1
+    #     gj[gj > w - 1] = w - 1
+        # update the obj and noobj masks.
+        # the noobj mask has 0 where obj mask has 1 and where IoU between
+        # g.t. bbox and anchor is higher than ignore_thresh
+        obj_mask[img_idx, best_anchors, gj, gi] = 1
+        noobj_mask[img_idx, best_anchors, gj, gi] = 0
+
+        for i, gt_anchor_iou in enumerate(gt_anchor_ious.t()):
+            noobj_mask[img_idx[i], gt_anchor_iou > ignore_thresh, gj[i], gi[i]] = 0
+
+        # coordinates of a center with respect to the top-left corner of a grid cell
+        gt_x[img_idx, best_anchors, gj, gi] = cx - cx.floor()
+        gt_y[img_idx, best_anchors, gj, gi] = cy - cy.floor()
+        # since yolo predicts the coefficients (log of coefs actually, see exp(tw) in paper)
+        # that will be used to multiply with anchor sides, for ground truth side 
+        # lengths, in turn, we should apply log transformation. 
+        # In other words, for the loss we need to compare the values of the same scale.
+        # Suppose, yolo predicts coefficient that is goint to be used to scale the anchors
+        # in log-scale first, then we apply exponentwhich makes them to be in regular 
+        # scale (see the yolo layer in darknet.py). Since, we are going to need only 
+        # the log-scale values before it is transformed to regular scale for the loss 
+        # calculation, we also, then, need to transform the g.t. coefficient to log-scale
+        # from the regular scale, hence, the log here.
+        gt_w[img_idx, best_anchors, gj, gi] = torch.log(bw / anchors[best_anchors][:, 0] + EPS)
+        gt_h[img_idx, best_anchors, gj, gi] = torch.log(bh / anchors[best_anchors][:, 1] + EPS)
+        # one-hot encoding of a label
+        gt_cls[img_idx, best_anchors, gj, gi, gt_class_int] = 1
+        # compute label correctness and iou at best anchor -- we will use them to
+        # calculate the metrics outside during the training loop.
+        # Extracting the labels from the prediciton tensor
+        _, pred_class_int = torch.max(predictions[img_idx, best_anchors, gj, gi, 5:], dim=-1)
+        class_mask[img_idx, best_anchors, gj, gi] = (pred_class_int == gt_class_int).float()
+        iou_scores[img_idx, best_anchors, gj, gi] = iou_vectorized(
+            predictions[img_idx, best_anchors, gj, gi, :4], 
+            targets[:, 2:6] * w
+        ).diag()
+
+        return iou_scores, class_mask, obj_mask, noobj_mask, gt_x, gt_y, gt_w, gt_h, gt_cls
