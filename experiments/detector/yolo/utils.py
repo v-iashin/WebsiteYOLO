@@ -113,10 +113,19 @@ def iou_vectorized(bboxes1, bboxes2, without_center_coords=False):
         (M, N) shapped tensor with (i, j) corresponding to IoU between i-th bbox 
         from bboxes1 with j-th bbox from bboxes2.
     '''
+    # pixel shift is 0 if we calculate without center coordinates and 1 otherwise.
+    # Why? Let's say I want to calculate the number of pixels the width of a box 
+    # overlaps given two x coordinates for pixels: 0 and 5. So, the side is 6 pixels
+    # but 5 - 0 = 5. Therefore, we add 1. 
+    # However, we don't need to do it when we don't have center coordinates
+    # i.e. without_center_coords = True
+    px_shift = 1
+    
     # add 'fake' center coordinates. You can use any value, we use zeros
     if without_center_coords:
         bboxes1 = torch.cat([torch.zeros_like(bboxes1[:, :2]), bboxes1], dim=1)
         bboxes2 = torch.cat([torch.zeros_like(bboxes2[:, :2]), bboxes2], dim=1)
+        px_shift = 0
     
     M, D = bboxes1.shape
     N, D = bboxes2.shape
@@ -148,13 +157,13 @@ def iou_vectorized(bboxes1, bboxes2, without_center_coords=False):
     # we make sure that the area is 0 if size of a side is negative
     # which means that inner_top_left_x > inner_bottom_right_x which is not feasible
     # Note: adding one because the coordinates starts at 0 and let's
-    a = torch.clamp(inner_bottom_right_x - inner_top_left_x + 1, min=0)
-    b = torch.clamp(inner_bottom_right_y - inner_top_left_y + 1, min=0)
+    a = torch.clamp(inner_bottom_right_x - inner_top_left_x + px_shift, min=0)
+    b = torch.clamp(inner_bottom_right_y - inner_top_left_y + px_shift, min=0)
     inner_area = a * b
 
     # finally we calculate union for each pair of bboxes
-    out_area1 = (bottom_right_x1 - top_left_x1 + 1) * (bottom_right_y1 - top_left_y1 + 1)
-    out_area2 = (bottom_right_x2 - top_left_x2 + 1) * (bottom_right_y2 - top_left_y2 + 1)
+    out_area1 = (bottom_right_x1 - top_left_x1 + px_shift) * (bottom_right_y1 - top_left_y1 + px_shift)
+    out_area2 = (bottom_right_x2 - top_left_x2 + px_shift) * (bottom_right_y2 - top_left_y2 + px_shift)
     out_area = out_area1 + out_area2 - inner_area
 
     return inner_area / out_area
@@ -447,7 +456,7 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
     img = img.unsqueeze(0)
 
     # make prediction
-    prediction, loss = model(img, device)
+    prediction, loss = model(img, device=device)
     # and apply objectness filtering and nms. If returns None, draw a box that states it
     prediction = objectness_filter_and_nms(prediction, model.classes) # todo check whether it has batch dim
     
@@ -521,7 +530,7 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
         # predicted class name to put on a bbox
         class_name = num2name[class_int]
         # text to name a box: class name and the probability in percents
-        text = f'{class_name} {(class_score * 100):.0f}'
+        text = f'{class_name} {(class_score * 100):.0f}%'
         # size for the text
         text_size = cv2.getTextSize(text, font_face, font_scale, font_thickness)[0]
         # bottom right coordinates for the small rectangle for the label
