@@ -445,7 +445,7 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
     # add letterbox padding and save the pad sizes and scalling coefficient
     # to use it latter when drawing bboxes on the original image
     H, W, C = img_raw.shape
-    H_new, W_new, scale = scale_numbers(H, W, model.in_width)
+    H_new, W_new, scale = scale_numbers(H, W, model.model_width)
     img = cv2.resize(img_raw, (W_new, H_new))
     img, pad_sizes = letterbox_pad(img)
 
@@ -456,7 +456,7 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
     img = img.unsqueeze(0)
 
     # make prediction
-    prediction, loss = model(img, device=device)
+    prediction = model(img, device=device)
     # and apply objectness filtering and nms. If returns None, draw a box that states it
     prediction = objectness_filter_and_nms(prediction, model.classes) # todo check whether it has batch dim
     

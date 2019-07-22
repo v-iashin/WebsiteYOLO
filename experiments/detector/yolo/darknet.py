@@ -52,7 +52,7 @@ class ShortcutLayer(nn.Module):
 class YOLOLayer(nn.Module):
     '''Similarly to the previous layers, YOLO layer in defined'''
     
-    def __init__(self, anchors, classes, num, jitter, ignore_thresh, truth_thresh, random, in_width):
+    def __init__(self, anchors, classes, num, jitter, ignore_thresh, truth_thresh, random, model_width):
         '''
         Arguments
         ---------
@@ -73,8 +73,9 @@ class YOLOLayer(nn.Module):
         random: int (??)
             If 1 then YOLO will perform data augmentation to generalize model for resized
             images (performs resizing).
-        in_width: int
-            The input for a model. `in_width = % 32` should be 0. Example: 416 or 608
+        model_width: int
+            The width of a model specified in the config. 
+            `in_width = % 32` should be 0. Example: 416 or 608
         '''
         super(YOLOLayer, self).__init__()
         self.anchors = anchors
@@ -84,7 +85,7 @@ class YOLOLayer(nn.Module):
         self.ignore_thresh = ignore_thresh
         self.truth_thresh = truth_thresh
         self.random = random
-        self.in_width = in_width
+        self.model_width = model_width
         
         
 class Darknet(nn.Module):
@@ -103,7 +104,7 @@ class Darknet(nn.Module):
         self.net_info, self.layers_list = self.create_layers(self.layers_info)
         # take the number of classes from the last (yolo) layer of the network.
         self.classes = self.layers_list[-1][0].classes
-        self.in_width = self.layers_list[-1][0].in_width
+        self.model_width = self.layers_list[-1][0].model_width
         print('shortcut is using output[i-1] instead of x check whether works with x')
         print('NOTE THAT CONV BEFORE YOLO USES (num_classes filters) * num_anch')
         print('changing predictions in the nms loop make sure that it is not used later')
@@ -140,6 +141,8 @@ class Darknet(nn.Module):
         loss: TODO:
             TODO:
         '''
+        # since we are use resizing augmentation: model_width != input_width
+        input_width = x.size(-1)
         # cache the outputs for route and shortcut layers
         outputs = []
         # initialize the loss that is going to be added to the
@@ -163,21 +166,18 @@ class Darknet(nn.Module):
                 x = torch.cat(to_cat, dim=1)
 
             elif name == 'yolo':
-#                 x = torch.load('random_x.pt')
-#                 targets = torch.load('random_targets.pt')
-                
                 # input size: (B, (4+1+classes)*num_achors=255, G_scale, G_scale)
                 B, C, G, G = x.size()
                 # read layer's info
                 anchors_list = layer[0].anchors
                 classes = self.classes
-                in_width = layer[0].in_width
+                model_width = layer[0].model_width
                 num_anchs = len(anchors_list)
                 # bbox coords + obj score + class scores
                 num_feats = 4 + 1 + classes
 
                 # transform the predictions
-                # (B, ((4+1+classes)*num_achors), Gi, Gi)
+                # (B, ((4+1+classes)*num_achors), Gs, Gs)
                 # -> (B, num_achors, w, h, (4+1+classes))
                 x = x.view(B, num_anchs, num_feats, G, G)
                 x = x.permute(0, 1, 3, 4, 2).contiguous()
@@ -203,73 +203,63 @@ class Darknet(nn.Module):
                 # Note: yolo predicts the coefficient in log-scale. For this reason
                 # we apply exp() on it.
                 # stride = the size of the grid cell side
-                stride = in_width // G
+                stride = input_width // G
                 # After dividing anchors by the stride, they represent the size size of
                 # how many grid celts they are overlapping: 1.2 = 1 and 20% of a grid cell.
                 # After multiplying them by the stride, the pixel values are going to be
                 # obtained.
                 anchors_list = [(anchor[0] / stride, anchor[1] / stride) for anchor in anchors_list]
+                anchors_tensor = torch.FloatTensor(anchors_list, device=device)
                 # (A, 2) -> (1, A, 1, 1, 2) for broadcasting
-                p_wh = torch.FloatTensor(anchors_list).view(1, num_anchs, 1, 1, 2).to(device)
+                p_wh = anchors_tensor.view(1, num_anchs, 1, 1, 2)
                 
                 # prediction values for the *loss* calculation (training)
                 t_x = torch.sigmoid(x[:, :, :, :, 0])
                 t_y = torch.sigmoid(x[:, :, :, :, 1])
                 # todo: making a deep copy of a tensor
-                t_wh = x[:, :, :, :, 2:4]#.clone()
+                t_wh = x[:, :, :, :, 2:4]
                 t_obj = torch.sigmoid(x[:, :, :, :, 4])
                 t_cls = torch.sigmoid(x[:, :, :, :, 5:5+classes])
                 
                 # prediction values that are going to be used for the original image
+                # we need to detach them from the graph as we don't need to backproparate
+                # on them
+                predictions = x.clone().detach()
                 # broadcasting (B, A, G, G) + (1, 1, G, 1)
                 # broadcasting (B, A, G, G) + (1, 1, 1, G)
-                print('t_x', t_x.sum())
-                x[:, :, :, :, 0] = (t_x + c_x) * stride
-                print('t_x (should be the same)', t_x.sum())
-                x[:, :, :, :, 1] = (t_y + c_y) * stride
+                # For now, we are not going to multiply them by stride since
+                # we need them in make_targets
+                predictions[:, :, :, :, 0] = t_x + c_x
+                predictions[:, :, :, :, 1] = t_y + c_y
                 # broadcasting (1, A, 1, 1, 2) * (B, A, G, G, 2)
-                print('t_wh', t_wh.sum())
-                x[:, :, :, :, 2:4] = (p_wh * torch.exp(t_wh)) * stride
-                print('t_wh (should be the same)', t_wh.sum())
-                x[:, :, :, :, 4] = t_obj
-                x[:, :, :, :, 5:5+classes] = t_cls
+                predictions[:, :, :, :, 2:4] = p_wh * torch.exp(t_wh)
+                predictions[:, :, :, :, 4] = t_obj
+                predictions[:, :, :, :, 5:5+classes] = t_cls
 
                 if targets is not None:
                     # We prepare targets at each scale as it depends on the 
                     # number of grid cells. So, we cannot do this once in, 
                     # let's say, __init__().
-                    print('t_obj', t_obj.sum())
-                    print('t_cls', t_cls.sum())
-                    ious, cls_mask, obj_mask, noobj_mask, gt_x, gt_y, gt_w, gt_h, gt_cls = make_targets(
-                        x, targets, anchors_tensor, self.ignore_thresh, device
+                    ious, cls_mask, obj_mask, noobj_mask, gt_x, gt_y, gt_w, gt_h, gt_cls, gt_obj = self.make_targets(
+                        predictions, targets, anchors_tensor, self.ignore_thresh, device
                     )
-                    print('(t_obj) should be the same as above', t_obj.sum())
-                    print('(t_cls) should be the same as above', t_cls.sum())
-                    
-                    
-                    gt_conf = obj_mask.float()
                     
                     # calculate loss (todo: replace it with a separate function)
-                    # checks whether at least one object has been detected
-                    if obj_mask.any():
-                        # todo: docs more motivation and explanation
-                        # (1) Localization loss
-                        # x[:, :, 0] should be (B, A, G, G)
-                        loss_x = self.mse_loss(t_x[obj_mask], gt_x[obj_mask])
-                        loss_y = self.mse_loss(t_y[obj_mask], gt_y[obj_mask])
-                        loss_w = self.mse_loss(t_wh[..., 0][obj_mask], gt_w[obj_mask])
-                        loss_h = self.mse_loss(t_wh[..., 1][obj_mask], gt_h[obj_mask])
-                        # (2) Confidence loss
-                        # todo: once the correctness is verified, check how to simplify the following three lines
-                        loss_conf_obj = self.bce_loss(t_obj[obj_mask], gt_conf[obj_mask])
-                        loss_conf_noobj = self.bce_loss(t_obj[noobj_mask], gt_conf[noobj_mask])
-                        loss_conf = self.obj_coef * loss_conf_obj + self.noobj_coef * loss_conf_noobj
-                        # (3) Classification loss
-                        loss_cls = self.bce_loss(t_cls[obj_mask], gt_cls[obj_mask])
-                        loss = loss_x + loss_y + loss_w + loss_h + loss_conf + loss_cls
-                    # in case no object has been detected (confidence loss part 2)
-                    else:
-                        loss = self.noobj_coef * self.bce_loss(t_obj[noobj_mask], gt_conf[noobj_mask])
+                    # todo: docs more motivation and explanation
+                    # (1) Localization loss
+                    # x[:, :, 0] should be (B, A, G, G)
+                    loss_x = self.mse_loss(t_x[obj_mask], gt_x[obj_mask])
+                    loss_y = self.mse_loss(t_y[obj_mask], gt_y[obj_mask])
+                    loss_w = self.mse_loss(t_wh[..., 0][obj_mask], gt_w[obj_mask])
+                    loss_h = self.mse_loss(t_wh[..., 1][obj_mask], gt_h[obj_mask])
+                    # (2) Confidence loss
+                    # todo: once the correctness is verified, check how to simplify the following three lines
+                    loss_conf_obj = self.bce_loss(t_obj[obj_mask], gt_obj[obj_mask])
+                    loss_conf_noobj = self.bce_loss(t_obj[noobj_mask], gt_obj[noobj_mask])
+                    loss_conf = self.obj_coeff * loss_conf_obj + self.noobj_coeff * loss_conf_noobj
+                    # (3) Classification loss
+                    loss_cls = self.bce_loss(t_cls[obj_mask], gt_cls[obj_mask])
+                    loss = loss_x + loss_y + loss_w + loss_h + loss_conf + loss_cls
                     
                     # increment the total loss. If it doesn't exists create the variable
                     try:
@@ -277,26 +267,29 @@ class Darknet(nn.Module):
                         
                     except NameError:
                         total_loss = loss
-
+                
+                # multiplying by stride only now because the make_targets func
+                # required predictions to be in 
+                predictions[:, :, :, :, :4] = predictions[:, :, :, :, :4] * stride
                 # for NMS: (B, A, G, G, 5+classes) -> (B, A*G*G, 5+classes)        
-                x = x.view(B, G*G*num_anchs, num_feats)
+                predictions = predictions.view(B, G*G*num_anchs, num_feats)
                 
                 # add new predictions to the list of predictions from all scales
                 # if variable does exist
                 try:
-                    predictions = torch.cat((predictions, x), dim=1)
+                    total_predictions = torch.cat((total_predictions, predictions), dim=1)
 
                 except NameError:
-                    predictions = x
-                    
+                    total_predictions = predictions
+                
             # after each layer we append the current output to the outputs list
             outputs.append(x)
             
         if targets is None:
-            return predictions
+            return total_predictions
         
         else:
-            return predictions, total_loss
+            return total_predictions, total_loss
     
     def load_weights(self, weight_file):
         '''
@@ -499,7 +492,7 @@ class Darknet(nn.Module):
         print('make_layers returns net_info as well. check whether it"s necessary')
         return net_info, layers_list
     
-    def make_targets(predictions, targets, anchors, ignore_thresh, device):
+    def make_targets(self, predictions, targets, anchors, ignore_thresh, device):
         '''
         Builds the neccessary g.t. masks and bbox attributes. It is expected to be 
         used at each scale of Darknet.
@@ -508,7 +501,9 @@ class Darknet(nn.Module):
         ---------
         predictions: torch.FloatTensor
             Predictions \in (B, A, Gs, Gs, 5+classes) where A - num of anchors
-            Gs - number of grid cells at the respective scale
+            Gs - number of grid cells at the respective scale.
+            Note: predictions have to be inputed before multiplying by stride
+                  (= input_img_size // number_of_grid_cells_on_one_side).
         targets: torch.FloatTensor
             Ground Truth bboxes and their classes. The tensor has
             the number of rows according to the number of g.t. bboxes
@@ -523,7 +518,7 @@ class Darknet(nn.Module):
             A tensor with anchors of size (num_anchs, 2) with width and height
             lengths in the number of grid cells they overlap at the current 
             scale. Anchors are calculated as the config anchors divided by the stride
-            (= model_input_size [416 or 608] // number_of_grid_cells_on_one_side).
+            (= input_img_size // number_of_grid_cells_on_one_side).
         ignore_thresh: float
             A threshold is a hyper-parameter that is used only when noobjectness
             mask (noobj_mask) is generated (see the code for insights).
@@ -587,6 +582,12 @@ class Darknet(nn.Module):
             A tensor of size !(B, num_anchs, G, G, num_classes)!.
             One-hot-encoding of the g.t. label at [img_idx, best_anchors, gj, gi].
             Used later for the estimation of the loss.
+        gt_obj: torch.FloatTensor
+            A tensor of size (B, A, Gs, Gs), where Gs represents number of grid 
+            cells at the respective scale.
+            Contains the same info as in obj_mask but different it is of a 
+            different type. Used to make the code more readable when loss is 
+            calculated.
 
             # TODO: gt_cls == obj_mask.sum(dim=-1)??
         '''
@@ -670,5 +671,7 @@ class Darknet(nn.Module):
             pred_xy_wh, 
             targets[:, 2:6] * G
         ).diag()
+        # ground truth objectness
+        gt_obj = obj_mask.float()
 
-        return iou_scores, class_mask, obj_mask, noobj_mask, gt_x, gt_y, gt_w, gt_h, gt_cls
+        return iou_scores, class_mask, obj_mask, noobj_mask, gt_x, gt_y, gt_w, gt_h, gt_cls, gt_obj
