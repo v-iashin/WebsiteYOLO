@@ -1,10 +1,94 @@
 import torch
 import cv2
 import numpy as np
+from PIL import ImageFont, ImageDraw, Image
 
 from matplotlib import pyplot as plt
 from matplotlib import cm as colormap
 from matplotlib.colors import Normalize
+
+
+'''
+The dataset folder is expected to have
+    the following structure:
+    
+    ./Submission_example/
+        0--Parade/
+            0_Parade_marchingband_1_20.txt
+    ./wider_face_split/
+        wider_face_test.mat
+        wider_face_train.mat
+        wider_face_test_filelist.txt
+        wider_face_val.mat
+        wider_face_train_bbx_gt.txt
+        readme.txt
+        wider_face_val_bbx_gt.txt
+    ./WIDER_train/
+        images/
+            0--Parade/
+                0_Parade_marchingband_1_100.jpg
+                ...
+            1--Handshaking/
+                1_Handshaking_Handshaking_1_102.jpg
+                ...
+            ...
+    ./WIDER_val/
+        (similar to ./WIDER_train/)
+    ./WIDER_test/
+        (similar to ./WIDER_train/)
+'''
+
+def read_meta_from_file(data_root_path):
+    '''
+    Parses WIDER ground truth data.
+        
+    Argument
+    --------
+    data_root_path: str
+        A path to the ground truth dataset. It is expected to have the '.txt'
+        extension.
+        
+    Output
+    ------
+    meta: dict
+        A map between a file path and ground truth bounding box coordinates and some
+        attributes (x1, y1, w, h, blur, expression, illumination, invalid, occlusion, pose)
+        stored as list of lists. For more information about the attributes see readme.txt.
+    '''
+    split_path = os.path.join(data_root_path, 'wider_face_split')
+    train_data_path = os.path.join(data_root_path, 'WIDER_train/images')
+    train_meta_path = os.path.join(split_path, 'wider_face_train_bbx_gt.txt')
+    
+    meta = {}
+
+    with open(train_meta_path, 'r') as rfile:
+
+        while True:
+
+            short_file_path = rfile.readline()
+            bbox_count = rfile.readline()
+
+            if short_file_path == '' or bbox_count == '':
+                rfile.close()
+                break
+
+            short_file_path = short_file_path.replace('\n', '')
+            bbox_count = int(bbox_count.replace('\n', ''))
+            
+            full_file_path = os.path.join(train_data_path, short_file_path)
+            
+            gt_bboxes = []
+
+            for _ in range(bbox_count):
+                attributes = rfile.readline()
+                attributes = attributes.replace('\n', '').split(' ')
+                attributes = [int(att) for att in attributes if len(att) > 0]
+
+                gt_bboxes.append(attributes)
+
+            meta[full_file_path] = gt_bboxes
+            
+    return meta
 
 def parse_cfg(file):
     '''
@@ -60,14 +144,30 @@ def parse_cfg(file):
     return layers
 
 def get_center_coords(bboxes): #top_left_x, top_left_y, box_w, box_h
-    '''todo: comment on generality'''
+    '''
+    Given the bboxes with top-left coordinates transforms the bboxes
+    with center coordinates.
+
+    Argument
+    --------
+    bboxes: torch.FloatTensor
+        A tensor of size (P, D) where D should contain info about the coords
+        in the following order (top_left_x, top_left_y, width, height). 
+        Note: D can be higher than 4.
+        
+    Output
+    ------
+    bboxes: torch.FloatTensor
+        The similar to the tensor specified in the input but with center 
+        coordinates in 0th and 1st columns.
+    '''
     bboxes[:, 0] = bboxes[:, 0] + bboxes[:, 2] // 2
     bboxes[:, 1] = bboxes[:, 1] + bboxes[:, 3] // 2
     return bboxes
 
 def get_corner_coords(bboxes):
     '''
-    Transforms the bounding boxes coordinate from (cx, cy, w, h) into
+    Transforms the bounding boxes coordinate from (center_x, center_y, w, h) into
     (top_left_x, top_left_y, bottom_right_x, bottom_right_y), 
     i.e. into corner coordinates.
     
@@ -525,7 +625,6 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
         bbox_color = list(map(lambda x: x * 255, bbox_color))
         # add a bbox
         cv2.rectangle(img_raw, top_left_coords, bottom_right_coords, bbox_color, line_thickness)
-
         ## ADD A LABLE FOR EACH BBOX INSIDE THE RECTANGLE WITH THE SAME COLOR AS THE BBOX ITSELF
         # predicted class name to put on a bbox
         class_name = num2name[class_int]

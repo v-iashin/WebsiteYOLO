@@ -123,10 +123,18 @@ class Darknet(nn.Module):
         ---------
         x: torch.FloatTensor
             An image of size (B, C, H, W).
-        target: TODO:
-            TODO:
+        targets: torch.FloatTensor
+            Ground Truth bboxes and their classes. The tensor has
+            the number of rows according to the number of g.t. bboxes
+            in the whole batch and 6 columns: 
+                - the image idx within the batch;
+                - the g.t. label corresponding to this bbox;
+                - center coordinates x, y \in (0, 1);
+                - bbox width and height
+            Note: the coordinates account for letter padding which means 
+                  that the coordinates for the center are shifted accordingly
         device: torch.device
-            The device to use for calculation: torch.device('cpu'), torch.device('gpu:0')
+            The device to use for calculation: torch.device('cpu'), torch.device('gpu:?')
             
         Output
         ------
@@ -138,8 +146,9 @@ class Darknet(nn.Module):
             For example: P = (13*13 + 26*26 + 52*52) * 3 = 10647;
             5 + classes -- (cx, cy, w, h, obj_score, {prob_class}).
             
-        loss: TODO:
-            TODO:
+        total_loss: torch.FloatTensor
+            If targets is specified.
+            Accumulated loss for each scale.
         '''
         # since we are use resizing augmentation: model_width != input_width
         input_width = x.size(-1)
@@ -243,17 +252,13 @@ class Darknet(nn.Module):
                     ious, cls_mask, obj_mask, noobj_mask, gt_x, gt_y, gt_w, gt_h, gt_cls, gt_obj = self.make_targets(
                         predictions, targets, anchors_tensor, self.ignore_thresh, device
                     )
-                    
                     # calculate loss (todo: replace it with a separate function)
-                    # todo: docs more motivation and explanation
                     # (1) Localization loss
-                    # x[:, :, 0] should be (B, A, G, G)
                     loss_x = self.mse_loss(t_x[obj_mask], gt_x[obj_mask])
                     loss_y = self.mse_loss(t_y[obj_mask], gt_y[obj_mask])
                     loss_w = self.mse_loss(t_wh[..., 0][obj_mask], gt_w[obj_mask])
                     loss_h = self.mse_loss(t_wh[..., 1][obj_mask], gt_h[obj_mask])
                     # (2) Confidence loss
-                    # todo: once the correctness is verified, check how to simplify the following three lines
                     loss_conf_obj = self.bce_loss(t_obj[obj_mask], gt_obj[obj_mask])
                     loss_conf_noobj = self.bce_loss(t_obj[noobj_mask], gt_obj[noobj_mask])
                     loss_conf = self.obj_coeff * loss_conf_obj + self.noobj_coeff * loss_conf_noobj
@@ -589,7 +594,7 @@ class Darknet(nn.Module):
             different type. Used to make the code more readable when loss is 
             calculated.
 
-            # TODO: gt_cls == obj_mask.sum(dim=-1)??
+            # TODO: gt_cls.sum(dim=-1) == obj_mask??
         '''
         EPS = 1e-16
 

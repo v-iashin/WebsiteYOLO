@@ -6,6 +6,7 @@ from matplotlib import pyplot as plt
 from matplotlib import cm as colormap
 from matplotlib.colors import Normalize
 
+
 '''
 The dataset folder is expected to have
     the following structure:
@@ -88,7 +89,6 @@ def read_meta_from_file(data_root_path):
             
     return meta
 
-
 def parse_cfg(file):
     '''
     Parses the original cfg file
@@ -142,9 +142,31 @@ def parse_cfg(file):
         
     return layers
 
+def get_center_coords(bboxes): #top_left_x, top_left_y, box_w, box_h
+    '''
+    Given the bboxes with top-left coordinates transforms the bboxes
+    with center coordinates.
+
+    Argument
+    --------
+    bboxes: torch.FloatTensor
+        A tensor of size (P, D) where D should contain info about the coords
+        in the following order (top_left_x, top_left_y, width, height). 
+        Note: D can be higher than 4.
+        
+    Output
+    ------
+    bboxes: torch.FloatTensor
+        The similar to the tensor specified in the input but with center 
+        coordinates in 0th and 1st columns.
+    '''
+    bboxes[:, 0] = bboxes[:, 0] + bboxes[:, 2] // 2
+    bboxes[:, 1] = bboxes[:, 1] + bboxes[:, 3] // 2
+    return bboxes
+
 def get_corner_coords(bboxes):
     '''
-    Transforms the bounding boxes coordinate from (cx, cy, w, h) into
+    Transforms the bounding boxes coordinate from (center_x, center_y, w, h) into
     (top_left_x, top_left_y, bottom_right_x, bottom_right_y), 
     i.e. into corner coordinates.
     
@@ -168,12 +190,6 @@ def get_corner_coords(bboxes):
 
     return top_left_x, top_left_y, bottom_right_x, bottom_right_y
 
-def get_center_coords(bboxes): #top_left_x, top_left_y, box_w, box_h
-    '''todo: comment on generality'''
-    bboxes[:, 0] = bboxes[:, 0] + bboxes[:, 2] // 2
-    bboxes[:, 1] = bboxes[:, 1] + bboxes[:, 3] // 2
-    return bboxes
-
 def iou_vectorized(bboxes1, bboxes2, without_center_coords=False):
     '''
     Calculates intersection over union between every bbox in bboxes1 with
@@ -196,10 +212,19 @@ def iou_vectorized(bboxes1, bboxes2, without_center_coords=False):
         (M, N) shapped tensor with (i, j) corresponding to IoU between i-th bbox 
         from bboxes1 with j-th bbox from bboxes2.
     '''
+    # pixel shift is 0 if we calculate without center coordinates and 1 otherwise.
+    # Why? Let's say I want to calculate the number of pixels the width of a box 
+    # overlaps given two x coordinates for pixels: 0 and 5. So, the side is 6 pixels
+    # but 5 - 0 = 5. Therefore, we add 1. 
+    # However, we don't need to do it when we don't have center coordinates
+    # i.e. without_center_coords = True
+    px_shift = 1
+    
     # add 'fake' center coordinates. You can use any value, we use zeros
     if without_center_coords:
         bboxes1 = torch.cat([torch.zeros_like(bboxes1[:, :2]), bboxes1], dim=1)
         bboxes2 = torch.cat([torch.zeros_like(bboxes2[:, :2]), bboxes2], dim=1)
+        px_shift = 0
     
     M, D = bboxes1.shape
     N, D = bboxes2.shape
@@ -230,13 +255,14 @@ def iou_vectorized(bboxes1, bboxes2, without_center_coords=False):
     # clamp(x, min=0) = max(x, 0)
     # we make sure that the area is 0 if size of a side is negative
     # which means that inner_top_left_x > inner_bottom_right_x which is not feasible
-    a = torch.clamp(inner_bottom_right_x - inner_top_left_x, min=0)
-    b = torch.clamp(inner_bottom_right_y - inner_top_left_y, min=0)
+    # Note: adding one because the coordinates starts at 0 and let's
+    a = torch.clamp(inner_bottom_right_x - inner_top_left_x + px_shift, min=0)
+    b = torch.clamp(inner_bottom_right_y - inner_top_left_y + px_shift, min=0)
     inner_area = a * b
 
     # finally we calculate union for each pair of bboxes
-    out_area1 = (bottom_right_x1 - top_left_x1) * (bottom_right_y1 - top_left_y1)
-    out_area2 = (bottom_right_x2 - top_left_x2) * (bottom_right_y2 - top_left_y2)
+    out_area1 = (bottom_right_x1 - top_left_x1 + px_shift) * (bottom_right_y1 - top_left_y1 + px_shift)
+    out_area2 = (bottom_right_x2 - top_left_x2 + px_shift) * (bottom_right_y2 - top_left_y2 + px_shift)
     out_area = out_area1 + out_area2 - inner_area
 
     return inner_area / out_area
@@ -390,7 +416,7 @@ def scale_numbers(num1, num2, largest_num_target):
     return int(num1), int(num2), scale_coeff
 
 # def letterbox_pad(img, net_input_size, color=(127.5, 127.5, 127.5)):
-def letterbox_pad(img, color=(127.5, 127.5, 127.5)): 
+def letterbox_pad(img, color=(127.5, 127.5, 127.5)):    
     '''
     Adds padding to an image according to the original implementation of darknet.
     Specifically, it will pad the image up to (net_input_size x net_input_size) size.
@@ -518,7 +544,7 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
     # add letterbox padding and save the pad sizes and scalling coefficient
     # to use it latter when drawing bboxes on the original image
     H, W, C = img_raw.shape
-    H_new, W_new, scale = scale_numbers(H, W, model.in_width)
+    H_new, W_new, scale = scale_numbers(H, W, model.model_width)
     img = cv2.resize(img_raw, (W_new, H_new))
     img, pad_sizes = letterbox_pad(img)
 
@@ -529,7 +555,7 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
     img = img.unsqueeze(0)
 
     # make prediction
-    prediction = model(img, device)
+    prediction = model(img, device=device)
     # and apply objectness filtering and nms. If returns None, draw a box that states it
     prediction = objectness_filter_and_nms(prediction, model.classes) # todo check whether it has batch dim
     
