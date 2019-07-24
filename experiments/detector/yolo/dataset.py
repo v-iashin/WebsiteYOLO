@@ -3,6 +3,8 @@ import json
 from tqdm import tqdm
 
 import cv2
+import numpy as np
+from matplotlib import pyplot as plt
 
 import torch
 from torch.utils.data.dataset import Dataset
@@ -40,18 +42,21 @@ The dataset folder is expected to have
 '''
 
 class WIDERdataset(Dataset):
+    '''
+    TODO: doc
+    '''
     
-    def __init__(self, json_path, phase, model_in_width, transforms=None):
+    def __init__(self, json_path, phase, model_width, transforms=None):
         
         with open(json_path, 'r') as fread:
             self.meta = json.load(fread)
             
         self.meta = {int(key): val for key, val in self.meta.items()}
         self.phase = phase
-        self.model_in_width = model_in_width
+        self.model_width = model_width
         self.transforms = transforms
         
-    def __getitem__(self, index):
+    def __getitem__(self, index, show_examples=False):
         
         if self.phase in ['train', 'val']:
             full_file_path, size_HW, gt_bboxes = self.meta[index].values()
@@ -66,9 +71,13 @@ class WIDERdataset(Dataset):
         # add letterbox padding and save the pad sizes and scalling coefficient
         # to use it to shift the bboxes' coordinates
         H, W = size_HW
-        H_new, W_new, scale = scale_numbers(H, W, self.model_in_width)
+        H_new, W_new, scale = scale_numbers(H, W, self.model_width)
         img = cv2.resize(img, (W_new, H_new))
         img, (pad_top, pad_bottom, pad_left, pad_right) = letterbox_pad(img)
+        
+        # applying transforms for an img (to be reconsidered for augmentation)
+        if self.transforms:
+            img = self.transforms(img)
         
         if self.phase in ['train', 'val']:
             # top_left_x, top_left_y, w, h, blur, expr, illum, inv, occl, pose
@@ -85,21 +94,105 @@ class WIDERdataset(Dataset):
             gt_bboxes[:, 1] = gt_bboxes[:, 1] + pad_top
 
             # scale bbox coordinates and dimensions to [0, 1]
-            gt_bboxes[:, :4] = gt_bboxes[:, :4] / self.model_in_width
+            gt_bboxes[:, :4] = gt_bboxes[:, :4] / self.model_width
             
             # batch index and face class number are going to be 0
             two_columns_with_zeros = torch.zeros(len(gt_bboxes), 2)
-            print(two_columns_with_zeros.shape, gt_bboxes.shape)
             targets = torch.cat([two_columns_with_zeros, gt_bboxes], dim=1)
+            
+            if show_examples:
+                self.show_examples(img, targets)
             
             return img, targets
         
         elif self.phase == 'test':
     
             return img, None
+    
+    def collate_wider(self, batch):
+        '''
+        TODO
+        '''
+        # add image index to the targets tensor because we need to know
+        # to which image in the batch a g.t. object correspond to as
+        # we are going to contatenate them in one tensor (see later here
+        # and also in make_targets in darknet for the loss calculation)
+        for img_idx, (image, targets) in enumerate(batch):
+            targets[:, 0] = img_idx
 
+        # extract images and targets from tuples
+        images = [item[0] for item in batch]
+        targets = [item[1] for item in batch]
+
+        # images is a list of tensors B x (C, H, W) -> (B, C, H, W) tensor
+        # but first the batch dim is added
+        images = [img.unsqueeze(0) for img in images]
+        images = torch.cat(images, dim=0)
+
+        # targets is a list of tensors, I will concat. them on the first dim
+        targets = torch.cat(targets, dim=0)
+
+        return images, targets
+    
+    def show_examples(self, img, targets, figsize=10):
+        '''
+        TODO
+        '''
+        if self.transforms:
+            img = ToNumpy()(img)
+                    
+        H, W, C = img.shape
+                    
+        for target in targets:
+            top_left_x = int(target[2] * W) - int((target[4] * W) // 2)
+            top_left_y = int(target[3] * H) - int((target[5] * H) // 2)
+            bottom_right_x = int(target[2] * W) + int((target[4] * W) // 2)
+            bottom_right_y = int(target[3] * H) + int((target[5] * H) // 2)
+            top_left_coords = top_left_x, top_left_y
+            bottom_right_coords = bottom_right_x, bottom_right_y
+            cv2.rectangle(img, top_left_coords, bottom_right_coords, (255, 255, 255), 2)
+                
+        plt.figure(figsize=(10, 10))
+        plt.imshow(img)
+        plt.show()
+    
     def __len__(self):
+        
         return len(self.meta)
+    
+class ToTensor(object):
+    """
+    Convert ndarrays to Tensors.
+    TODO:
+    """
+    
+    def __call__(self, x):
+        # making sure that the tensors are of a proper type
+        x = x.astype(np.float32)
+        
+        # swap channel axis because
+        # cv2 image: H x W x C
+        # torch image: C x H x W
+        x = x.transpose(2, 0, 1)
+        
+        # [0, 255] -> [0, 1]
+        x = x / 255
+        
+        return torch.from_numpy(x)
+    
+class ToNumpy(object):
+    """
+    Convert to Tensors to ndarrays.
+    TODO:
+    """
+    
+    def __call__(self, x):
+        # restores back the ToTensor transformation
+        x = x * 255
+        x = x.permute(1, 2, 0)
+        x = x.int()
+        
+        return x.numpy()
 
 def read_wider_meta(data_root_path, phase):
     '''
