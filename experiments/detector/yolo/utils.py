@@ -414,7 +414,7 @@ def scale_numbers(num1, num2, largest_num_target):
     num2 = num2 * scale_coeff
     
     # making sure that the numbers has int type
-    return int(num1), int(num2), scale_coeff
+    return round(num1), round(num2), scale_coeff
 
 # def letterbox_pad(img, net_input_size, color=(127.5, 127.5, 127.5)):
 def letterbox_pad(img, color=(127.5, 127.5, 127.5)):    
@@ -484,7 +484,8 @@ def letterbox_pad(img, color=(127.5, 127.5, 127.5)):
     
     return img, pad_sizes
     
-    
+
+# TODO: test for different devices
 def predict_and_save(img_path, save_path, model, device, labels_path='./data/coco.names', show=False):
     '''
     Predicts objects on an image, draws the bounding boxes around the predicted objects,
@@ -527,7 +528,7 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
     norm = Normalize(vmin=0, vmax=model.classes)
     color_map = colormap.tab10
     figsize = (15, 15)
-    line_thickness = 2
+    line_thickness = 1
     font_face = cv2.FONT_HERSHEY_PLAIN
     font_scale = 1.1
     font_color = [255, 255, 255] # white
@@ -554,13 +555,13 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
     img = img / 255
     img = torch.from_numpy(img).float()
     img = img.unsqueeze(0)
+    img = img.to(device)
 
     # make prediction
     prediction = model(img, device=device)
     # and apply objectness filtering and nms. If returns None, draw a box that states it
     prediction = objectness_filter_and_nms(prediction, model.classes) # todo check whether it has batch dim
     
-
     ### if no objects have been detected draw one rectangle on the perimeter of the 
     # img_raw with text that no objects are found. for comments for this if condition 
     # please see the for-loop below
@@ -598,10 +599,10 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
     top_left_x, top_left_y, bottom_right_x, bottom_right_y = get_corner_coords(prediction)
 
     # detach values from the computation graph, take the int part and transform to np.ndarray
-    top_left_x = top_left_x.detach().int().numpy()
-    top_left_y = top_left_y.detach().int().numpy()
-    bottom_right_x = bottom_right_x.detach().int().numpy()
-    bottom_right_y = bottom_right_y.detach().int().numpy()
+    top_left_x = top_left_x.cpu().detach().int().numpy()
+    top_left_y = top_left_y.cpu().detach().int().numpy()
+    bottom_right_x = bottom_right_x.cpu().detach().int().numpy()
+    bottom_right_y = bottom_right_y.cpu().detach().int().numpy()
 
     # if show initialize a figure environment
     if show:

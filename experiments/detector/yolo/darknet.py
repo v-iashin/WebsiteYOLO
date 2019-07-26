@@ -1,4 +1,4 @@
-# TODO: assertions?
+from IPython.core.debugger import set_trace
 
 import numpy as np
 
@@ -134,7 +134,7 @@ class Darknet(nn.Module):
             Note: the coordinates account for letter padding which means 
                   that the coordinates for the center are shifted accordingly
         device: torch.device
-            The device to use for calculation: torch.device('cpu'), torch.device('gpu:?')
+            The device to use for calculation: torch.device('cpu'), torch.device('cuda:?')
             
         Output
         ------
@@ -188,6 +188,7 @@ class Darknet(nn.Module):
                 # transform the predictions
                 # (B, ((4+1+classes)*num_achors), Gs, Gs)
                 # -> (B, num_achors, w, h, (4+1+classes))
+#                 set_trace()
                 x = x.view(B, num_anchs, num_feats, G, G)
                 x = x.permute(0, 1, 3, 4, 2).contiguous()
                 
@@ -218,7 +219,8 @@ class Darknet(nn.Module):
                 # After multiplying them by the stride, the pixel values are going to be
                 # obtained.
                 anchors_list = [(anchor[0] / stride, anchor[1] / stride) for anchor in anchors_list]
-                anchors_tensor = torch.FloatTensor(anchors_list, device=device)
+
+                anchors_tensor = torch.tensor(anchors_list, device=device)
                 # (A, 2) -> (1, A, 1, 1, 2) for broadcasting
                 p_wh = anchors_tensor.view(1, num_anchs, 1, 1, 2)
                 
@@ -629,16 +631,16 @@ class Darknet(nn.Module):
 
         cx, cy = cxy.t()
         bw, bh = bwh.t()
-        # remove a decimal part -> grid_i, grid_j point to the top left coord
+        # remove a decimal part -> gi, gj point to the top left coord
         # for a grid cell to which an object will correspond
         gi, gj = cxy.long().t()
         # helps with RuntimeError: CUDA error: device-side assert triggered
-        # This aims to avoid grid_i[i] and grid_j[i] exceeding bound of size[2, 3] 
+        # This aims to avoid gi[i] and gj[i] exceeding bound of size[2, 3] 
         # of noobj_mask.
-    #     gi[gi < 0] = 0
-    #     gj[gj < 0] = 0
-    #     gi[gi > G - 1] = G - 1
-    #     gj[gj > G - 1] = G - 1
+        gi[gi < 0] = 0
+        gj[gj < 0] = 0
+        gi[gi > G - 1] = G - 1
+        gj[gj > G - 1] = G - 1
         # update the obj and noobj masks.
         # the noobj mask has 0 where obj mask has 1 and where IoU between
         # g.t. bbox and anchor is higher than ignore_thresh

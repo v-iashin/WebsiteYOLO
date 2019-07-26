@@ -1,3 +1,5 @@
+from IPython.core.debugger import set_trace
+
 import os
 import json
 from tqdm import tqdm
@@ -75,6 +77,9 @@ class WIDERdataset(Dataset):
         img = cv2.resize(img, (W_new, H_new))
         img, (pad_top, pad_bottom, pad_left, pad_right) = letterbox_pad(img)
         
+        if (img.shape[0] != self.model_width) or (img.shape[1] != self.model_width):
+            set_trace()
+        
         # applying transforms for an img (to be reconsidered for augmentation)
         if self.transforms:
             img = self.transforms(img)
@@ -100,6 +105,18 @@ class WIDERdataset(Dataset):
             two_columns_with_zeros = torch.zeros(len(gt_bboxes), 2)
             targets = torch.cat([two_columns_with_zeros, gt_bboxes], dim=1)
             
+            # this block filters out the objects which contain bad annotation:
+            # negative values
+            if (targets < 0).any():
+                # log() is used to find the negative values as 
+                # log(a) where a < 0 is nan
+                mask = torch.isnan(torch.log(targets))
+                # then we create a row-wise binary mask with 0s where a
+                # negative value has occured and 1s otherwise
+                mask = mask.sum(dim=1) == 0
+                targets = targets[mask]
+#                 print(f'Filtered out some rows @ {full_file_path}')
+            
             if show_examples:
                 self.show_examples(img, targets)
             
@@ -109,7 +126,7 @@ class WIDERdataset(Dataset):
     
             return img, None
     
-    def collate_wider(self, batch):
+    def collate_fn(self, batch):
         '''
         TODO
         '''
@@ -127,7 +144,10 @@ class WIDERdataset(Dataset):
         # images is a list of tensors B x (C, H, W) -> (B, C, H, W) tensor
         # but first the batch dim is added
         images = [img.unsqueeze(0) for img in images]
-        images = torch.cat(images, dim=0)
+        try:
+            images = torch.cat(images, dim=0)
+        except:
+            set_trace()
 
         # targets is a list of tensors, I will concat. them on the first dim
         targets = torch.cat(targets, dim=0)
@@ -194,6 +214,7 @@ class ToNumpy(object):
         
         return x.numpy()
 
+# TODO: make this function to be a method of the wider dataset
 def read_wider_meta(data_root_path, phase):
     '''
     Parses WIDER ground truth data.
@@ -312,7 +333,12 @@ def read_wider_meta(data_root_path, phase):
                 attributes = rfile.readline()
                 attributes = attributes.replace('\n', '').split(' ')
                 attributes = [int(att) for att in attributes if len(att) > 0]
-
+                
+                # some annotations contain negative values
+                if any(att < 0 for att in attributes):
+                    print(f'Negative annotations found @ {full_file_path}')
+                    print(f'Annotation: {attributes}\n')
+                    
                 gt_bboxes.append(attributes)
             
             # add gt_boxes info to file_info and add this dict to the meta dict

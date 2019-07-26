@@ -1,11 +1,9 @@
 .ipynb_checkpoints/
 .DS_Store
 __pycache__
-detector/experiments/yolo/data/*
+detector/experiments/yolo/data/
 *.weights
 proj_tmp/
 WIDER*
-Submission_example.zip
-Submission_example/
-wider_face_split.zip
-wider_face_split/
+wider*
+Submission_example*
