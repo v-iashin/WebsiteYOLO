@@ -335,6 +335,7 @@ def read_wider_meta(data_root_path, phase):
                 attributes = [int(att) for att in attributes if len(att) > 0]
                 
                 # some annotations contain negative values
+                # we don't deal with them until the dataset loader
                 if any(att < 0 for att in attributes):
                     print(f'Negative annotations found @ {full_file_path}')
                     print(f'Annotation: {attributes}\n')

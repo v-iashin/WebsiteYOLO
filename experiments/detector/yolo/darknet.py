@@ -188,7 +188,6 @@ class Darknet(nn.Module):
                 # transform the predictions
                 # (B, ((4+1+classes)*num_achors), Gs, Gs)
                 # -> (B, num_achors, w, h, (4+1+classes))
-#                 set_trace()
                 x = x.view(B, num_anchs, num_feats, G, G)
                 x = x.permute(0, 1, 3, 4, 2).contiguous()
                 
@@ -219,18 +218,16 @@ class Darknet(nn.Module):
                 # After multiplying them by the stride, the pixel values are going to be
                 # obtained.
                 anchors_list = [(anchor[0] / stride, anchor[1] / stride) for anchor in anchors_list]
-
                 anchors_tensor = torch.tensor(anchors_list, device=device)
                 # (A, 2) -> (1, A, 1, 1, 2) for broadcasting
                 p_wh = anchors_tensor.view(1, num_anchs, 1, 1, 2)
                 
                 # prediction values for the *loss* calculation (training)
-                t_x = torch.sigmoid(x[:, :, :, :, 0])
-                t_y = torch.sigmoid(x[:, :, :, :, 1])
-                # todo: making a deep copy of a tensor
-                t_wh = x[:, :, :, :, 2:4]
-                t_obj = torch.sigmoid(x[:, :, :, :, 4])
-                t_cls = torch.sigmoid(x[:, :, :, :, 5:5+classes])
+                pred_x = torch.sigmoid(x[:, :, :, :, 0])
+                pred_y = torch.sigmoid(x[:, :, :, :, 1])
+                pred_wh = x[:, :, :, :, 2:4]
+                pred_obj = torch.sigmoid(x[:, :, :, :, 4])
+                pred_cls = torch.sigmoid(x[:, :, :, :, 5:5+classes])
                 
                 # prediction values that are going to be used for the original image
                 # we need to detach them from the graph as we don't need to backproparate
@@ -240,12 +237,12 @@ class Darknet(nn.Module):
                 # broadcasting (B, A, G, G) + (1, 1, 1, G)
                 # For now, we are not going to multiply them by stride since
                 # we need them in make_targets
-                predictions[:, :, :, :, 0] = t_x + c_x
-                predictions[:, :, :, :, 1] = t_y + c_y
+                predictions[:, :, :, :, 0] = pred_x + c_x
+                predictions[:, :, :, :, 1] = pred_y + c_y
                 # broadcasting (1, A, 1, 1, 2) * (B, A, G, G, 2)
-                predictions[:, :, :, :, 2:4] = p_wh * torch.exp(t_wh)
-                predictions[:, :, :, :, 4] = t_obj
-                predictions[:, :, :, :, 5:5+classes] = t_cls
+                predictions[:, :, :, :, 2:4] = p_wh * torch.exp(pred_wh)
+                predictions[:, :, :, :, 4] = pred_obj
+                predictions[:, :, :, :, 5:5+classes] = pred_cls
 
                 if targets is not None:
                     # We prepare targets at each scale as it depends on the 
@@ -256,17 +253,30 @@ class Darknet(nn.Module):
                     )
                     # calculate loss (todo: replace it with a separate function)
                     # (1) Localization loss
-                    loss_x = self.mse_loss(t_x[obj_mask], gt_x[obj_mask])
-                    loss_y = self.mse_loss(t_y[obj_mask], gt_y[obj_mask])
-                    loss_w = self.mse_loss(t_wh[..., 0][obj_mask], gt_w[obj_mask])
-                    loss_h = self.mse_loss(t_wh[..., 1][obj_mask], gt_h[obj_mask])
+                    loss_x = self.mse_loss(pred_x[obj_mask], gt_x[obj_mask])
+                    loss_y = self.mse_loss(pred_y[obj_mask], gt_y[obj_mask])
+                    loss_w = self.mse_loss(pred_wh[..., 0][obj_mask], gt_w[obj_mask])
+                    loss_h = self.mse_loss(pred_wh[..., 1][obj_mask], gt_h[obj_mask])
                     # (2) Confidence loss
-                    loss_conf_obj = self.bce_loss(t_obj[obj_mask], gt_obj[obj_mask])
-                    loss_conf_noobj = self.bce_loss(t_obj[noobj_mask], gt_obj[noobj_mask])
+                    loss_conf_obj = self.bce_loss(pred_obj[obj_mask], gt_obj[obj_mask])
+                    loss_conf_noobj = self.bce_loss(pred_obj[noobj_mask], gt_obj[noobj_mask])
                     loss_conf = self.obj_coeff * loss_conf_obj + self.noobj_coeff * loss_conf_noobj
                     # (3) Classification loss
-                    loss_cls = self.bce_loss(t_cls[obj_mask], gt_cls[obj_mask])
+                    loss_cls = self.bce_loss(pred_cls[obj_mask], gt_cls[obj_mask])
                     loss = loss_x + loss_y + loss_w + loss_h + loss_conf + loss_cls
+                    
+                    # Metrics
+                    # todo: comments
+                    accuracy = 100 * cls_mask[obj_mask].mean()
+                    conf_obj = pred_obj[obj_mask].mean()
+                    conf_noobj = pred_obj[noobj_mask].mean()
+                    conf50 = (pred_obj > 0.5).float()
+                    iou50 = (ious > 0.5).float()
+                    iou75 = (ious > 0.75).float()
+                    detected_mask = conf50 * cls_mask * gt_obj
+                    precision = torch.sum(iou50 * detected_mask) / (conf50.sum() + 1e-16)
+                    recall50 = torch.sum(iou50 * detected_mask) / (obj_mask.sum() + 1e-16)
+                    recall75 = torch.sum(iou75 * detected_mask) / (obj_mask.sum() + 1e-16)
                     
                     # increment the total loss. If it doesn't exists create the variable
                     try:
@@ -276,7 +286,7 @@ class Darknet(nn.Module):
                         total_loss = loss
                 
                 # multiplying by stride only now because the make_targets func
-                # required predictions to be in 
+                # required predictions to be in grid values
                 predictions[:, :, :, :, :4] = predictions[:, :, :, :, :4] * stride
                 # for NMS: (B, A, G, G, 5+classes) -> (B, A*G*G, 5+classes)        
                 predictions = predictions.view(B, G*G*num_anchs, num_feats)
@@ -558,7 +568,7 @@ class Darknet(nn.Module):
             A tensor of size (B, A, Gs, Gs), where Gs represents number of grid 
             cells at the respective scale.
             Contains all zeros except for ones at [img_idx, best_anchors, gj, gi].
-            The same as class mask but less strict: it is one regardless of whether
+            The same as class_mask but less strict: it is one regardless of whether
             the predicted label matches the g.t. label.
             Used later for the estimation of the loss and metrics.
         noobj_mask: torch.ByteTensor
@@ -592,7 +602,7 @@ class Darknet(nn.Module):
         gt_obj: torch.FloatTensor
             A tensor of size (B, A, Gs, Gs), where Gs represents number of grid 
             cells at the respective scale.
-            Contains the same info as in obj_mask but different it is of a 
+            Contains the same info as in obj_mask but it is of a 
             different type. Used to make the code more readable when loss is 
             calculated.
 

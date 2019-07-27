@@ -587,7 +587,6 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
 
     # since the predictions are made for a resized and padded images, 
     # the bounding boxes have to be scaled and shifted back
-    # for that, we shift and scale back the bboxes' attributes
     pad_top, pad_bottom, pad_left, pad_right = pad_sizes
     prediction[:, 0] = (prediction[:, 0] - pad_left) / scale
     prediction[:, 1] = (prediction[:, 1] - pad_top) / scale
