@@ -323,7 +323,7 @@ def objectness_filter_and_nms(predictions, classes, obj_thresh=0.8, nms_thresh=0
         # in the list of predictions
         
         # for each prediction we save the class with the maximum class score
-        pred_score, pred_classes = torch.max(prediction[:, 5:5+classes], dim=1)
+        pred_score, pred_classes = torch.max(prediction[:, 5:5+classes], dim=-1)
         
         # we are going to iterate through classes, so, first, we select the set of unique classes
         unique_classes = pred_classes.unique().float()
@@ -534,10 +534,19 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
     font_color = [255, 255, 255] # white
     font_thickness = 1
     jpg_quality = 80
+    obj_thresh = 0.8 # 0.8
+    nms_thresh = 0.4 # 0.4
 
-    # make a dict: {class_number: class_name}
-    names = [name.replace('\n', '') for name in open(labels_path, 'r').readlines()]
-    num2name = {num: name for num, name in enumerate(names)}
+    # make a dict: {class_number: class_name} if we have more than 1 class
+    if model.classes > 1:
+        # replacing with whitespace because we would like to remove space from
+        # the text format later in naming the bounding boxes: 
+        names = [name.replace('\n', ' ') for name in open(labels_path, 'r').readlines()]
+        num2name = {num: name for num, name in enumerate(names)}
+    
+    else:
+        # we don't need a class names if the the number of classes is 1
+        num2name = {0: ''}
 
     # read an image and transform the colors from BGR to RGB
     img_raw = cv2.imread(img_path)
@@ -558,9 +567,14 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
     img = img.to(device)
 
     # make prediction
-    prediction = model(img, device=device)
+    prediction, loss = model(img, device=device)
     # and apply objectness filtering and nms. If returns None, draw a box that states it
-    prediction = objectness_filter_and_nms(prediction, model.classes) # todo check whether it has batch dim
+    prediction = objectness_filter_and_nms(prediction, model.classes, obj_thresh, nms_thresh) # todo check whether it has batch dim
+    print(f'obj_thresh: {obj_thresh}, nms_thresh: {nms_thresh}')
+    
+    # if show initialize a figure environment
+    if show:
+        plt.figure(figsize=figsize)
     
     ### if no objects have been detected draw one rectangle on the perimeter of the 
     # img_raw with text that no objects are found. for comments for this if condition 
@@ -603,10 +617,6 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
     bottom_right_x = bottom_right_x.cpu().detach().int().numpy()
     bottom_right_y = bottom_right_y.cpu().detach().int().numpy()
 
-    # if show initialize a figure environment
-    if show:
-        plt.figure(figsize=figsize)
-
     # add each prediction on the image and captures it with a class number
     for i in range(len(prediction)):
 
@@ -629,15 +639,17 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
         # predicted class name to put on a bbox
         class_name = num2name[class_int]
         # text to name a box: class name and the probability in percents
-        text = f'{class_name} {(class_score * 100):.0f}%'
+        text = f'{class_name}{(class_score * 100):.0f}%'
         # size for the text
         text_size = cv2.getTextSize(text, font_face, font_scale, font_thickness)[0]
-        # bottom right coordinates for the small rectangle for the label
-        bottom_right_coords_ = top_left_coords[0] + text_size[0] + 4, top_left_coords[1] + text_size[1] + 4
+        # top-left and bottom right coordinates for the small rectangle for the label
+        # (max is used because we don't want to have a tag outside of the image)
+        top_left_coords_ = top_left_coords[0], max(0, top_left_coords[1] - text_size[1] - 2)
+        bottom_right_coords_ = top_left_coords[0] + text_size[0] + 2, top_left_coords[1]# + text_size[1] + 2
         # adds a small rectangle of the same color to be the background for the label
-        cv2.rectangle(img_raw, top_left_coords, bottom_right_coords_, bbox_color, cv2.FILLED)
-        # position for text (for min and max comments see calculation of corner coordinates)
-        xy_position = max(0, top_left_x[i]) + 2, max(0, top_left_y[i]) + text_size[1]
+        cv2.rectangle(img_raw, top_left_coords_, bottom_right_coords_, bbox_color, cv2.FILLED)
+        # position for the text (for min and max comments see calculation of corner coordinates)
+        xy_position = max(0, top_left_x[i]) + 2, max(0, top_left_y[i]) - 2
         # adds the class label with confidence
         cv2.putText(img_raw, text, xy_position, font_face, font_scale, font_color, font_thickness)
 
