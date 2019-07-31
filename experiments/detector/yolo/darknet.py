@@ -83,8 +83,8 @@ class YOLOLayer(nn.Module):
         self.model_width = model_width
         self.EPS = 1e-16
         # 100 and 1 are taken from github.com/eriklindernoren/PyTorch-YOLOv3
-        self.noobj_coeff = 1
-        self.obj_coeff = 100
+        self.noobj_coeff = 100
+        self.obj_coeff = 1
         self.ignore_thresh = 0.5
         self.bce_loss = nn.BCELoss()
         self.mse_loss = nn.MSELoss()
