@@ -89,8 +89,10 @@ def show_image_w_bboxes_for_server(img_path, method):
     # selecting a name for a file for archiving
     filename = f'{time()}.jpg'
     archive_full_path = os.path.join(ARCHIVE_PATH, filename)
-    cv2.imwrite(archive_full_path, img, [cv2.IMWRITE_JPEG_QUALITY, JPG_QUALITY])
-    cv2.imwrite(OUTPUT_PATH, img, [cv2.IMWRITE_JPEG_QUALITY, JPG_QUALITY])
+    img.save(archive_full_path, 'JPEG')
+    img.save(OUTPUT_PATH, 'JPEG')
+#     cv2.imwrite(archive_full_path, img, [cv2.IMWRITE_JPEG_QUALITY, JPG_QUALITY])
+#     cv2.imwrite(OUTPUT_PATH, img, [cv2.IMWRITE_JPEG_QUALITY, JPG_QUALITY])
     
     # calculating elapsed time and printing it to flask console
     elapsed_time = round(time() - start, 2)
