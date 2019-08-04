@@ -1,7 +1,7 @@
 import torch
 import cv2
 import numpy as np
-from PIL import ImageFont, ImageDraw, Image
+from PIL import ImageFont, ImageDraw, Image, ExifTags
 
 from matplotlib import pyplot as plt
 from matplotlib import cm as colormap
@@ -483,9 +483,52 @@ def letterbox_pad(img, color=(127.5, 127.5, 127.5)):
     
     return img, pad_sizes
     
+def fix_orientation_if_needed(pil_img):
+    '''
+    Motivation: sometimes when a user uploads a photo from their phone the 
+    photo is rotated by 90 deg even though it looks fine on the phone. This 
+    functionfixes this problem by correcting the orientation by employing info
+    from EXIF.
+    
+    Argument
+    --------
+    pil_img: PIL.Image.Image
+        The target image.
+        
+    Output
+    ------
+    pil_img: PIL.Image.Image
+        The original image with the fixed orientation or the same image if 
+        no EXIF info is available
+    '''
+    # ExifTags.TAGS is a dict: some integer -> Tag description
+    # 274 is an index that correspond to the orientation field
+    orientation_index = 274
+    assert ExifTags.TAGS[orientation_index] == 'Orientation', 'tested on PIL==6.1.0'
+    
+    # some images doesn't have any exif info, for those we don't do anything
+    try:
+        # extract the orientation info 
+        orientation = pil_img.info['parsed_exif'][orientation_index]
+        
+        # for info please see: https://magnushoff.com/jpeg-orientation.html
+        # if expand is False the dimension of the image remains the same
+        if orientation == 3:
+            pil_img = pil_img.rotate(180, expand=True)
+
+        elif orientation == 6:
+            pil_img = pil_img.rotate(270, expand=True)
+
+        elif orientation == 8:
+            pil_img = pil_img.rotate(90, expand=True)
+        
+    except (AttributeError, KeyError, IndexError):
+        print('No exif found')
+    
+    return pil_img
 
 # TODO: test for different devices
-def predict_and_save(img_path, save_path, model, device, labels_path='./data/coco.names', show=False):
+def predict_and_save(img_path, save_path, model, device, labels_path, font_path, show=False):
     '''
     Predicts objects on an image, draws the bounding boxes around the predicted objects,
     and saves the image.
@@ -502,6 +545,8 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
         Device for calculations.
     labels_path: str
         The path to the object names.
+    font_path: str
+        The path to the font which is going to be used to tag bounding boxes.
     show: bool
         Whether to show the output image with bounding boxes, for example, in jupyter notebook
         
@@ -530,7 +575,7 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
     line_thickness = 2
     obj_thresh = 0.8 # 0.8
     nms_thresh = 0.4 # 0.4
-    font = ImageFont.truetype('./data/FreeSansBold.ttf', 14)
+    font = ImageFont.truetype(font_path, 14)
 
     # make a dict: {class_number: class_name} if we have more than 1 class
     if model.classes > 1:
@@ -544,7 +589,8 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
         num2name = {0: ''}
     
     # read an image
-    source_img = Image.open(img_path).convert("RGB")
+    source_img = Image.open(img_path).convert('RGB')
+    source_img = fix_orientation_if_needed(source_img)
     W, H = source_img.size
     
     # add letterbox padding and save the pad sizes and scalling coefficient

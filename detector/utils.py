@@ -1,7 +1,7 @@
 import torch
 import cv2
 import numpy as np
-from PIL import ImageFont, ImageDraw, Image
+from PIL import ImageFont, ImageDraw, Image, ExifTags
 
 from matplotlib import pyplot as plt
 from matplotlib import cm as colormap
@@ -384,7 +384,7 @@ def scale_numbers(num1, num2, largest_num_target):
         
     Outputs
     -------
-    : (int, int, float)
+    (int, int, float)
         Two scaled numbers such that the largest is equal to largest_num_target 
         maintaining the same aspect ratio as num1 and num2 in input. Also,
         returns a scalling coefficient.
@@ -412,10 +412,8 @@ def scale_numbers(num1, num2, largest_num_target):
     num1 = num1 * scale_coeff
     num2 = num2 * scale_coeff
     
-    # making sure that the numbers has int type
     return round(num1), round(num2), scale_coeff
 
-# def letterbox_pad(img, net_input_size, color=(127.5, 127.5, 127.5)):
 def letterbox_pad(img, color=(127.5, 127.5, 127.5)):    
     '''
     Adds padding to an image according to the original implementation of darknet.
@@ -425,8 +423,6 @@ def letterbox_pad(img, color=(127.5, 127.5, 127.5)):
     ---------
     img: numpy.ndarray
         An image to pad.
-#    net_input_size: int
-#        The network's input size.
     color: (float or int, float or int, float or int) \in [0, 255]
         The RGB intensities. The image will be padded with this color.
         
@@ -483,9 +479,43 @@ def letterbox_pad(img, color=(127.5, 127.5, 127.5)):
     
     return img, pad_sizes
     
+def fix_orientation_if_needed(pil_img, orientation):
+    '''
+    Motivation: sometimes when a user uploads a photo from their phone the 
+    photo is rotated by 90 deg even though it looks fine on the phone. This 
+    functionfixes this problem by correcting the orientation by employing info
+    from EXIF. For more info regarding this issue, please see: 
+    https://magnushoff.com/jpeg-orientation.html
+    
+    Argument
+    --------
+    pil_img: PIL.Image.Image
+        The target image.
+    orientation: str
+        Orientation which front-end tries to extract from EXIF of an image.
+        Can be 'undefined' or some integer which can be used to orient the image.
+        
+    Output
+    ------
+    pil_img: PIL.Image.Image
+        The original image with the fixed orientation or the same image if 
+        no EXIF info is available
+    '''
+    
+    # if expand is False the dimension of the image remains the same
+    if orientation == '3':
+        pil_img = pil_img.rotate(180, expand=True)
+        
+    elif orientation == '6':
+        pil_img = pil_img.rotate(270, expand=True)
+    
+    elif orientation == '8':
+        pil_img = pil_img.rotate(90, expand=True)
+        
+    return pil_img
 
 # TODO: test for different devices
-def predict_and_save(img_path, save_path, model, device, labels_path='./data/coco.names', show=False):
+def predict_and_save(img_path, save_path, model, device, labels_path, font_path, orientation, show=False):
     '''
     Predicts objects on an image, draws the bounding boxes around the predicted objects,
     and saves the image.
@@ -502,6 +532,12 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
         Device for calculations.
     labels_path: str
         The path to the object names.
+    font_path: str
+        The path to the font which is going to be used to tag bounding boxes.
+    orientation: str
+        Orientation which front-end tries to extract from EXIF of an image.
+        Can be 'undefined' or some integer which can be used to orient the image.
+        Used in fix_orientation_if_needed().
     show: bool
         Whether to show the output image with bounding boxes, for example, in jupyter notebook
         
@@ -511,14 +547,13 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
         Predictions of a size (<number of detected objects>, 4+1+<number of classes>). 
         prediction is NoneType when no object has been detected on an image.
     
-    ??: numpy.ndarray
-        TODO:
+    source_img: PIL.Image.Image
+        The image with bboxes drawn on it.
     '''
     # make sure the arguments are of correct types
     assert isinstance(img_path, str), '"img_path" should be str'
     assert save_path is None or isinstance(save_path, str), 'save_path should be NoneType or str'
     assert isinstance(labels_path, str), '"labels_path" should be str'
-#     assert isinstance(model, darknet.Darknet), 'model should be a Darknet module'
     assert isinstance(device, (torch.device, str)), 'device should be either torch.device or str'
     assert isinstance(show, bool), 'show should be boolean'
 
@@ -530,7 +565,7 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
     line_thickness = 2
     obj_thresh = 0.8 # 0.8
     nms_thresh = 0.4 # 0.4
-    font = ImageFont.truetype('./PersonalProjects/detector/data/FreeSansBold.ttf', 14)
+    font = ImageFont.truetype(font_path, 14)
 
     # make a dict: {class_number: class_name} if we have more than 1 class
     if model.classes > 1:
@@ -544,7 +579,8 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
         num2name = {0: ''}
     
     # read an image
-    source_img = Image.open(img_path).convert("RGB")
+    source_img = Image.open(img_path).convert('RGB')
+    source_img = fix_orientation_if_needed(source_img, orientation)
     W, H = source_img.size
     
     # add letterbox padding and save the pad sizes and scalling coefficient
@@ -565,7 +601,6 @@ def predict_and_save(img_path, save_path, model, device, labels_path='./data/coc
     # make prediction
     prediction, loss = model(img, device=device)
     # and apply objectness filtering and nms. If returns None, draw a box that states it
-    # todo check whether it has batch dim
     prediction = objectness_filter_and_nms(prediction, model.classes, obj_thresh, nms_thresh)
     print(f'obj_thresh: {obj_thresh}, nms_thresh: {nms_thresh}')
     
