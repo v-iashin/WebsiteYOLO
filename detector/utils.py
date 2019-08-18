@@ -614,7 +614,7 @@ def predict_and_save(img_path, save_path, model, device, labels_path, font_path,
     if prediction is None:
         top_left_coords = (0, 0)
         black = (0, 0, 0)
-        text = 'No objects found :-('
+        text = "Couldn't find any objects that I was trained to detect :-("
         # increase the font size a bit
         font.size += 2
         tag = Image.new('RGB', font.getsize(text), black)
