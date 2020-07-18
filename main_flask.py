@@ -13,7 +13,7 @@ from utils import parse_cfg, predict_and_save
 from darknet import Darknet
 
 ###
-PROJECT_PATH = './PersonalProjects/'
+PROJECT_PATH = './WebsiteYOLO/'
 
 PROJ_TEMP_PATH = os.path.join(PROJECT_PATH, 'proj_tmp')
 ARCHIVE_PATH = os.path.join(PROJ_TEMP_PATH, 'upload_archive')
