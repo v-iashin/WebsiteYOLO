@@ -1,4 +1,4 @@
-# [Website YOLO Detector](https://v-iashin.github.io/detector)
+# [YOLO Detector platform](https://v-iashin.github.io/detector)
 
 <img src="https://github.com/v-iashin/v-iashin.github.io/raw/master/images/typical_russian_day_res.jpeg" alt="Object Detector's Predictions (YOLO v3) on a Sample Image. Caption: 'a man in a business suit and a person in a bear consume are walking on a sidewalk, which is surrounded by cars on a sunny day (Saint Petersburg, Russia)'." width="600">
 
