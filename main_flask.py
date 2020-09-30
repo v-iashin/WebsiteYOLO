@@ -13,6 +13,7 @@ from utils import parse_cfg, predict_and_save
 from darknet import Darknet
 
 ###
+
 PROJECT_PATH = './WebsiteYOLO/'
 
 PROJ_TEMP_PATH = os.path.join(PROJECT_PATH, 'proj_tmp')
@@ -31,6 +32,7 @@ JPG_QUALITY = 80
 DEVICE = torch.device('cpu:0')
 
 METHOD = 'yolo_608_coco'
+
 ###
 
 # start Flask application
@@ -53,7 +55,7 @@ assert os.path.exists(PROJECT_PATH), f'{PROJECT_PATH} does not exist. Consider t
     
 # if there is no folder for archiving, create
 if not os.path.exists(ARCHIVE_PATH):
-    os.makedirs(ARCHIVE_PATH)
+       os.makedirs(ARCHIVE_PATH)
     
 def show_image_w_bboxes_for_server(img_path, model, orientation):
     '''
@@ -79,7 +81,8 @@ def show_image_w_bboxes_for_server(img_path, model, orientation):
         
     with torch.no_grad():
         # TODO: add captital-letter arguments to the argument list
-        predictions, img = predict_and_save(
+        predictions, img = predict_and_save
+        (
             img_path, OUTPUT_PATH, model, DEVICE, YOLOV3_LABELS_PATH, 
             FONT_PATH, orientation, show=False
         )
