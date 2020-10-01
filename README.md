@@ -13,7 +13,7 @@ To put it simply, it receives a user image and runs an object detection algorith
 5. signed instance-side digital certificates for HTTPs for my domain ([Let's Encrypt](https://letsencrypt.org/))
 6. setted up the back-end environment on my instance + detector implementation (THIS repo)
 
-If you are interested in the details of each step, let me know in Issues. 
+If you are interested in the details of each step, let me know in issues. 
 
 # Setting up the Environment
 Download the YOLOv3 weights
