@@ -1,5 +1,7 @@
 # [Website YOLO Detector](https://v-iashin.github.io/detector)
 
+PROJECT ON YOLO DETECTION
+
 <img src="https://github.com/v-iashin/v-iashin.github.io/raw/master/images/typical_russian_day_res.jpeg" alt="Object Detector's Predictions (YOLO v3) on a Sample Image. Caption: 'a man in a business suit and a person in a bear consume are walking on a sidewalk, which is surrounded by cars on a sunny day (Saint Petersburg, Russia)'." width="600">
 
 The repository stores the back-end for the Flask application, which serves the requests coming from [the detector at my website](https://v-iashin.github.io/detector). 
