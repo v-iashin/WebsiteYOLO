@@ -7,10 +7,10 @@ import torch
 from torch import nn
 
 from utils import parse_cfg, iou_vectorized
-        
+
 class RouteLayer(nn.Module):
     '''Route layer outputs the concatenated outputs from the specified layers.'''
-    
+
     def __init__(self, routes):
         '''
         Arguments
@@ -18,41 +18,41 @@ class RouteLayer(nn.Module):
         routes: list
             A list of indices that correspond to the previous layers. The outputs
             from these layers will be used as the output from the route layer.
-            
+
             Examples:
-            [-4]: the output of the route layer in this case is the 
+            [-4]: the output of the route layer in this case is the
                 output of the 4th layer before this route layer.
             [-1, 61]: the output of the route layer is the concatenation
                 of the previous and 61th layers on depth ('channel') dimension.
         '''
         super(RouteLayer, self).__init__()
         self.routes = routes
-        
+
 class ShortcutLayer(nn.Module):
     '''Similarly to Routelayer shortcut layer functions as a dummy layer and only saves
     the index of the layer to use the shortcut from.'''
-    
+
     def __init__(self, frm):
         '''
         Arguments
         ---------
         frm: int
-            The index of the layer which will be used as the shotcut connection with the 
+            The index of the layer which will be used as the shotcut connection with the
             current layer. Think of it as a ResNet's shortcut connection. For more
             information please see the 'Examples' to RouteLayer.
         '''
         super(ShortcutLayer, self).__init__()
         self.frm = frm
-        
+
 class YOLOLayer(nn.Module):
     '''Similarly to the previous layers, YOLO layer in defined'''
-    
+
     def __init__(self, anchors, classes, num, jitter, ignore_thresh, truth_thresh, random, model_width):
         '''
         Arguments
         ---------
         anchors: list
-            A list of tuples of pairs of ints corresponding to initial sizes of 
+            A list of tuples of pairs of ints corresponding to initial sizes of
             bounding boxes (width and height). In YOLO v3 there are 3 pairs of ints.
         classes: int
             The number of classes. In COCO there are 80 classes.
@@ -69,7 +69,7 @@ class YOLOLayer(nn.Module):
             If 1 then YOLO will perform data augmentation to generalize model for resized
             images (performs resizing).
         model_width: int
-            The width of a model specified in the config. 
+            The width of a model specified in the config.
             `in_width = % 32` should be 0. Example: 416 or 608
         '''
         super(YOLOLayer, self).__init__()
@@ -89,7 +89,7 @@ class YOLOLayer(nn.Module):
         self.bce_loss = nn.BCELoss()
         self.mse_loss = nn.MSELoss()
         print(f'self.noobj_coeff: {self.noobj_coeff}, self.obj_coeff: {self.obj_coeff}')
-        
+
     def forward(self, x, targets, device, input_width):
         '''
         Arguments
@@ -98,28 +98,28 @@ class YOLOLayer(nn.Module):
             An image of size (B, C, G, G).
         targets: None or torch.FloatTensor
             None if no targets are provided (for inference).
-            If provided, ground truth (g.t.) bboxes and their classes. 
-            The tensor has the number of rows according to the number 
-            of g.t. bboxes in the whole batch and 6 columns: 
+            If provided, ground truth (g.t.) bboxes and their classes.
+            The tensor has the number of rows according to the number
+            of g.t. bboxes in the whole batch and 6 columns:
                 - the image idx within the batch;
                 - the g.t. label corresponding to this bbox;
                 - center coordinates x, y \in (0, 1);
                 - bbox width and height
-            Note: the coordinates account for letter padding which means 
+            Note: the coordinates account for letter padding which means
                   that the coordinates for the center are shifted accordingly
         device: torch.device
             The device to use for calculation: torch.device('cpu'), torch.device('cuda:?')
-            
+
         Outputs
         -------
         predictions: torch.FloatTensor
             A tensor of size (B, P, 5+classes) with predictions.
-            B -- batch size; P -- number of predictions for an image, 
+            B -- batch size; P -- number of predictions for an image,
             i.e. 3 scales and 3 anchor boxes and
             For example: P = (13*13 + 26*26 + 52*52) * 3 = 10647;
             5 + classes -- (cx, cy, w, h, obj_score, {prob_class}).
         loss: float or int
-            The accumulated loss (float) after passing through every 
+            The accumulated loss (float) after passing through every
             YOLO layers at each scale. If targets is None, returns zero (int).
         '''
         # input size: (B, (4+1+classes)*num_achors=255, G_scale, G_scale)
@@ -147,10 +147,10 @@ class YOLOLayer(nn.Module):
         # coordinates for an anchor in a respective cell. Specifically,
         # (1, 1) means the center of the anchor is in the bottom-right
         # corner of the respective cell. However, we would like to predict
-        # the pixel position for the original image. For that, we add the 
+        # the pixel position for the original image. For that, we add the
         # coordinates of x and y of the grid to each "sigmoided" value
-        # which tells which position on the grid a prediction has. 
-        # To transform these grid coordinates to original image, we 
+        # which tells which position on the grid a prediction has.
+        # To transform these grid coordinates to original image, we
         # multiply these values by the stride (=orig_size / cell_width).
         c_x = torch.arange(G).view(1, 1, 1, G).float().to(device)
         c_y = torch.arange(G).view(1, 1, G, 1).float().to(device)
@@ -194,8 +194,8 @@ class YOLOLayer(nn.Module):
         predictions[:, :, :, :, 5:5+classes] = pred_cls
 
         if targets is not None:
-            # We prepare targets at each scale as it depends on the 
-            # number of grid cells. So, we cannot do this once in, 
+            # We prepare targets at each scale as it depends on the
+            # number of grid cells. So, we cannot do this once in,
             # let's say, __init__().
             ious, cls_mask, obj_mask, noobj_mask, gt_x, gt_y, gt_w, gt_h, gt_cls, gt_obj = self.make_targets(
                 predictions, targets, anchors_tensor, self.ignore_thresh, device
@@ -231,14 +231,14 @@ class YOLOLayer(nn.Module):
         # multiplying by stride only now because the make_targets func
         # required predictions to be in grid values
         predictions[:, :, :, :, :4] = predictions[:, :, :, :, :4] * stride
-        # for NMS: (B, A, G, G, 5+classes) -> (B, A*G*G, 5+classes)        
+        # for NMS: (B, A, G, G, 5+classes) -> (B, A*G*G, 5+classes)
         predictions = predictions.view(B, G*G*num_anchs, num_feats)
-        
+
         return predictions, loss
-    
+
     def make_targets(self, predictions, targets, anchors, ignore_thresh, device):
         '''
-        Builds the neccessary g.t. masks and bbox attributes. It is expected to be 
+        Builds the neccessary g.t. masks and bbox attributes. It is expected to be
         used at each scale of Darknet.
 
         Arguments
@@ -251,16 +251,16 @@ class YOLOLayer(nn.Module):
         targets: torch.FloatTensor
             Ground Truth bboxes and their classes. The tensor has
             the number of rows according to the number of g.t. bboxes
-            in the whole batch and 6 columns: 
+            in the whole batch and 6 columns:
                 - the image idx within the batch;
                 - the g.t. label corresponding to this bbox;
                 - center coordinates x, y \in (0, 1);
                 - bbox width and height
-            Note: the coordinates account for letter padding which means 
+            Note: the coordinates account for letter padding which means
                   that the coordinates for the center are shifted accordingly
         anchors: torch.FloatTensor
             A tensor with anchors of size (num_anchs, 2) with width and height
-            lengths in the number of grid cells they overlap at the current 
+            lengths in the number of grid cells they overlap at the current
             scale. Anchors are calculated as the config anchors divided by the stride
             (= input_img_size // number_of_grid_cells_on_one_side).
         ignore_thresh: float
@@ -272,41 +272,41 @@ class YOLOLayer(nn.Module):
         Outputs
         -------
         iou_scores: torch.FloatTensor
-            A tensor of size (B, A, Gs, Gs), where Gs represents number of grid cells 
+            A tensor of size (B, A, Gs, Gs), where Gs represents number of grid cells
             at the respective scale.
-            Contains all zeros except for the IoUs at [img_idx, best_anchors, gj, gi] 
+            Contains all zeros except for the IoUs at [img_idx, best_anchors, gj, gi]
             between:
-                a) predicted bboxes (at the positions of anchors with the highest 
+                a) predicted bboxes (at the positions of anchors with the highest
                 IoU with g.t. bboxes at a (gj, gi) grid-cell) and
-                b) the g.t. (target) bboxes. 
+                b) the g.t. (target) bboxes.
             In other words, we take a g.t. bbox, look at the anchor which fits it best,
-            find the same exact location (gj, gi) and anchor (best_anchors) 
+            find the same exact location (gj, gi) and anchor (best_anchors)
             at image (img_idx) in the predictions and calculate IoU between them.
             At other predictions, which g.t. doesn't cover, it is 0.
             Used later for the estimation of metrics.
         class_mask: torch.FloatTensor
-            A tensor of size (B, A, Gs, Gs), where Gs represents number of grid 
-            cells at the respective scale. 
-            Contains all zeros except for ones at [img_idx, best_anchors, gj, gi] if 
+            A tensor of size (B, A, Gs, Gs), where Gs represents number of grid
+            cells at the respective scale.
+            Contains all zeros except for ones at [img_idx, best_anchors, gj, gi] if
             a predicted class at [img_idx, best_anchors, gj, gi] matches the g.t.
             label.
             Used later for the estimation of metrics.
         obj_mask: torch.ByteTensor
-            A tensor of size (B, A, Gs, Gs), where Gs represents number of grid 
+            A tensor of size (B, A, Gs, Gs), where Gs represents number of grid
             cells at the respective scale.
             Contains all zeros except for ones at [img_idx, best_anchors, gj, gi].
             The same as class_mask but less strict: it is one regardless of whether
             the predicted label matches the g.t. label.
             Used later for the estimation of the loss and metrics.
         noobj_mask: torch.ByteTensor
-            A tensor of size (B, A, Gs, Gs), where Gs represents number of grid 
-            cells at the respective scale. 
+            A tensor of size (B, A, Gs, Gs), where Gs represents number of grid
+            cells at the respective scale.
             A mask which is an opposite to obj_mask. It has zeros where obj_mask has
-            ones and also where IoU betwee g.t. and anchors are higher than 
+            ones and also where IoU betwee g.t. and anchors are higher than
             ignore_thresh.
             Used later for the estimation of the loss and metrics.
         gt_x, gt_y: torch.FloatTensor, torch.FloatTensor
-            Tensors of size (B, A, Gs, Gs), where Gs represents number of grid 
+            Tensors of size (B, A, Gs, Gs), where Gs represents number of grid
             cells at the respective scale.
             Contain the values in [0, 1] at [img_idx, best_anchors, gj, gi] at x and y
             which represent the position of the center of the g.t. bbox w.r.t
@@ -315,11 +315,11 @@ class YOLOLayer(nn.Module):
             tx and ty at [img_idx, best_anchors, gj, gi] are going to be (0.57 and 0.3).
             Used later for the estimation of the loss.
         gt_w, gt_h: torch.FloatTensor, torch.FloatTensor
-            Tensors of size (B, A, Gs, Gs), where Gs represents number of grid 
+            Tensors of size (B, A, Gs, Gs), where Gs represents number of grid
             cells at the respective scale.
-            Contain the values in (log(0), log(Gs)] respectively 
+            Contain the values in (log(0), log(Gs)] respectively
             at [img_idx, best_anchors, gj, gi] for both width and height respectively
-            others are 0s and represent the log-transformation of the g.t. coefficient 
+            others are 0s and represent the log-transformation of the g.t. coefficient
             that is used to multiply the anchors to fit the dimensions of the g.t. bboxes.
             Used later for the estimation of the loss.
         gt_cls: torch.FloatTensor
@@ -327,10 +327,10 @@ class YOLOLayer(nn.Module):
             One-hot-encoding of the g.t. label at [img_idx, best_anchors, gj, gi].
             Used later for the estimation of the loss.
         gt_obj: torch.FloatTensor
-            A tensor of size (B, A, Gs, Gs), where Gs represents number of grid 
+            A tensor of size (B, A, Gs, Gs), where Gs represents number of grid
             cells at the respective scale.
-            Contains the same info as in obj_mask but it is of a 
-            different type. Used to make the code more readable when loss is 
+            Contains the same info as in obj_mask but it is of a
+            different type. Used to make the code more readable when loss is
             calculated.
 
             # TODO: gt_cls.sum(dim=-1) == obj_mask??
@@ -370,7 +370,7 @@ class YOLOLayer(nn.Module):
         # for a grid cell to which an object will correspond
         gi, gj = cxy.long().t()
         # helps with RuntimeError: CUDA error: device-side assert triggered
-        # This aims to avoid gi[i] and gj[i] exceeding bound of size[2, 3] 
+        # This aims to avoid gi[i] and gj[i] exceeding bound of size[2, 3]
         # of noobj_mask.
         gi[gi < 0] = 0
         gj[gj < 0] = 0
@@ -388,14 +388,14 @@ class YOLOLayer(nn.Module):
         # coordinates of a center with respect to the top-left corner of a grid cell
         gt_x[img_idx, best_anchors, gj, gi] = cx - cx.floor()
         gt_y[img_idx, best_anchors, gj, gi] = cy - cy.floor()
-        # since yolo predicts the coefficients (log of coefs actually, see exp(tw) 
-        # in the paper) that will be used to multiply with anchor sides, 
-        # for ground truth side lengths, in turn, we should apply log transformation. 
+        # since yolo predicts the coefficients (log of coefs actually, see exp(tw)
+        # in the paper) that will be used to multiply with anchor sides,
+        # for ground truth side lengths, in turn, we should apply log transformation.
         # In other words, for the loss we need to compare the values of the same scale.
         # Suppose, yolo predicts coefficient that is goint to be used to scale the anchors
-        # in log-scale first, then we apply exponent which makes them to be in regular 
-        # scale (see the yolo layer in darknet.py). Since, we are going to need only 
-        # the log-scale values before it is transformed to regular scale for the loss 
+        # in log-scale first, then we apply exponent which makes them to be in regular
+        # scale (see the yolo layer in darknet.py). Since, we are going to need only
+        # the log-scale values before it is transformed to regular scale for the loss
         # calculation, we also, then, need to transform the g.t. coefficient to log-scale
         # from the regular scale, hence, the log here.
         gt_w[img_idx, best_anchors, gj, gi] = torch.log(bw / anchors[best_anchors][:, 0] + self.EPS)
@@ -413,21 +413,21 @@ class YOLOLayer(nn.Module):
         # need to know only IoU between corresponding rows (pairs) we select only diagonal
         # elements
         iou_scores[img_idx, best_anchors, gj, gi] = iou_vectorized(
-            pred_xy_wh, 
+            pred_xy_wh,
             targets[:, 2:6] * G
         ).diag()
         # ground truth objectness
         gt_obj = obj_mask.float()
 
         return iou_scores, class_mask, obj_mask, noobj_mask, gt_x, gt_y, gt_w, gt_h, gt_cls, gt_obj
-    
+
     def calculate_metrics_at_this_scale(self, pred_obj, iou_scores, class_mask, obj_mask, noobj_mask, gt_obj):
         '''
         TODO ONCE TESTED
         '''
         # obj_mask has 1s only where there is a g.t. in that cell
         # cls_mask is the same as obj_mask but more "strics": it
-        # has 1s where the is a g.t. AND the predicted label 
+        # has 1s where the is a g.t. AND the predicted label
         # matches the g.t.
         # Therefore, it measures how well the model predicts labels
         # at positions with g.t.
@@ -446,7 +446,7 @@ class YOLOLayer(nn.Module):
         iou50_mask = (iou_scores > 0.5).float()
         iou75_mask = (iou_scores > 0.75).float()
         # has 1s where the predicted label matches
-        # the g.t. one and if the predicted objectness score is 
+        # the g.t. one and if the predicted objectness score is
         # high enough (0.5)
         detected_mask = pred_obj50_mask * class_mask * gt_obj
         # pred_obj50_mask.sum() = number of confident predictions
@@ -463,7 +463,7 @@ class YOLOLayer(nn.Module):
         # recall = TP / (TP + FN) = TP / all_ground_truths
         recall50 = (iou50_mask * detected_mask).sum() / (all_ground_truths + self.EPS)
         recall75 = (iou75_mask * detected_mask).sum() / (all_ground_truths + self.EPS)
-        
+
         metrics_dict = {
             'accuracy': accuracy.item(),
             'conf_obj': conf_obj.item(),
@@ -472,19 +472,19 @@ class YOLOLayer(nn.Module):
             'recall50': recall50.item(),
             'recall75': recall75.item(),
         }
-        
+
         return metrics_dict
 
-        
+
 class Darknet(nn.Module):
     '''Darknet model (YOLO v3)'''
-    
+
     def __init__(self, cfg_path):
         '''
         Argument
         --------
         cfg_path: str
-            A path to config file. 
+            A path to config file.
             Example: github.com/pjreddie/darknet/blob/master/cfg/yolov3.cfg
         '''
         super(Darknet, self).__init__()
@@ -497,7 +497,7 @@ class Darknet(nn.Module):
         print('changing predictions in the nms loop make sure that it is not used later')
         print('not adding +1 in nms')
         print('loss: w and h aren"t put through sqroot' )
-        
+
     def forward(self, x, targets=None, device=torch.device('cpu')):
         '''
         Arguments
@@ -507,25 +507,25 @@ class Darknet(nn.Module):
         targets: torch.FloatTensor
             Ground Truth bboxes and their classes. The tensor has
             the number of rows according to the number of g.t. bboxes
-            in the whole batch and 6 columns: 
+            in the whole batch and 6 columns:
                 - the image idx within the batch;
                 - the g.t. label corresponding to this bbox;
                 - center coordinates x, y \in (0, 1);
                 - bbox width and height
-            Note: the coordinates account for letter padding which means 
+            Note: the coordinates account for letter padding which means
                   that the coordinates for the center are shifted accordingly
         device: torch.device
             The device to use for calculation: torch.device('cpu'), torch.device('cuda:?')
-            
+
         Output
         ------
         x: torch.FloatTensor
             A tensor of size (B, P, 5+classes) with predictions.
-            B -- batch size; P -- number of predictions for an image, 
+            B -- batch size; P -- number of predictions for an image,
             i.e. 3 scales and 3 anchor boxes and
             For example: P = (13*13 + 26*26 + 52*52) * 3 = 10647;
             5 + classes -- (cx, cy, w, h, obj_score, {prob_class}).
-            
+
         total_loss: torch.FloatTensor
             If targets is specified.
             Accumulated loss for each scale.
@@ -561,22 +561,22 @@ class Darknet(nn.Module):
                 # increment loss. Loss is calculated at each YOLOLayer
                 loss += loss
                 predictions.append(x)
-                    
+
             # after each layer we append the current output to the outputs list
             outputs.append(x)
-            
-        # the list of predictions is now concatenated in one tensor 
+
+        # the list of predictions is now concatenated in one tensor
         predictions = torch.cat(predictions, dim=1)
-            
+
         if targets is None:
             assert loss == 0, f'loss = 0 if targets is None, loss: {loss}'
-        
+
         return predictions, loss
-        
+
     def save_model(self, log_path, epoch, optimizer):
         '''
         Saves the model to specified path. If doesn't exist creates the folder.
-        
+
         Arguments
         ---------
         log_path: str
@@ -595,11 +595,11 @@ class Darknet(nn.Module):
         os.makedirs(log_path, exist_ok=True)
         path_to_save = os.path.join(log_path, 'bestmodel.pt')
         torch.save(dict_to_save, path_to_save)
-    
+
     def load_weights(self, weight_file):
         '''
         Loads weights from the original weight file.
-        
+
         Argument
         --------
         weight_file: str
@@ -684,13 +684,13 @@ class Darknet(nn.Module):
 
     def create_layers(self, layers_info):
         '''An auxiliary fuction that creates a ModuleList given layers_info
-        
+
         Argument
         --------
-        layers_info: list: 
-            a list containing net info (0th element) and info for each 
+        layers_info: list:
+            a list containing net info (0th element) and info for each
             layer (module) specified in the config (1: elements).
-            
+
         Outputs
         ------
         net_info, layers_list: (dict, torch.nn.ModuleList)
@@ -714,25 +714,25 @@ class Darknet(nn.Module):
             name = layer_info['name'] # conv, upsample, route, shortcut, yolo
 
             if name == 'convolutional':
-                
+
                 # extract arguments for the layer
                 in_filters = filters_cache[-1]
                 out_filters = int(layer_info['filters'])
                 kernel_size = int(layer_info['size'])
                 pad = (kernel_size - 1) // 2 if int(layer_info['pad']) else 0
                 stride = int(layer_info['stride'])
-                
+
                 # some layers doesn't have BN
                 try:
                     layer_info['batch_normalize']
                     conv = nn.Conv2d(in_filters, out_filters, kernel_size, stride, pad, bias=False)
                     layer.add_module('conv_{}'.format(i), conv)
                     layer.add_module('bn_{}'.format(i), nn.BatchNorm2d(out_filters))
-                    
+
                 except KeyError:
                     conv = nn.Conv2d(in_filters, out_filters, kernel_size, stride, pad)
                     layer.add_module('conv_{}'.format(i), conv)
-                
+
                 # activation. if 'linear': no activation
                 if layer_info['activation'] == 'leaky':
                     layer.add_module('leaky_{}'.format(i), nn.LeakyReLU(0.1))
@@ -741,11 +741,11 @@ class Darknet(nn.Module):
                 # extract arguments for the layer
                 stride = int(layer_info['stride'])
                 layer.add_module(
-                    'upsample_{}'.format(i), 
+                    'upsample_{}'.format(i),
                     nn.Upsample(scale_factor=stride, mode='bilinear', align_corners=True)
                 )
 
-            # here we need to deal only with the number of filters 
+            # here we need to deal only with the number of filters
             elif name == 'route':
                 # route can have one, two, or more sources
                 # first, let's make them to be ints
@@ -771,7 +771,7 @@ class Darknet(nn.Module):
                 num = int(layer_info['num'])
                 jitter = float(layer_info['jitter'])
                 ignore_thresh = float(layer_info['ignore_thresh'])
-                truth_thresh = float(layer_info['truth_thresh']) 
+                truth_thresh = float(layer_info['truth_thresh'])
                 random = int(layer_info['random']) # int??
                 in_width = int(net_info['width'])
 
@@ -786,7 +786,7 @@ class Darknet(nn.Module):
                 anchors = [anchors[mask] for mask in masks]
 
                 # add the yolo layer to the list
-                yolo = YOLOLayer(anchors, classes, num, jitter, ignore_thresh, 
+                yolo = YOLOLayer(anchors, classes, num, jitter, ignore_thresh,
                                  truth_thresh, random, in_width)
                 layer.add_module('yolo_{}'.format(i), yolo)
 
