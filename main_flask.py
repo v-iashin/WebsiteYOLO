@@ -100,7 +100,7 @@ def show_image_w_bboxes_for_server(img_path, model, orientation):
 @app.route('/', methods=['GET', 'POST'])
 def upload_file():
     '''
-    Handles a request. If a request to '/' is of the type POST, hangle the image 
+    Handles a request. If a request to '/' is of the type POST, handle the image 
     and add predictions on it; if a request of the type GET, return a notification
     that GET request has been received.
     
