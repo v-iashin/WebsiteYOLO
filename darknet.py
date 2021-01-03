@@ -550,7 +550,7 @@ class Darknet(nn.Module):
             elif name == 'shortcut':
                 # index which is used for shortcut (usually '-3')
                 x = outputs[-1] + outputs[layer[0].frm]
-        #         x = x + outputs[layer.frm]
+                # x = x + outputs[layer.frm]
 
             elif name == 'route':
                 to_cat = [outputs[route_idx] for route_idx in layer[0].routes]
@@ -680,7 +680,7 @@ class Darknet(nn.Module):
                     conv.weight.data.copy_(conv_w)
                     idx += conv_w_num
 
-#                     print('no bn detected at {}'.format(i))
+                    # print('no bn detected at {}'.format(i))
 
     def create_layers(self, layers_info):
         '''An auxiliary fuction that creates a ModuleList given layers_info
@@ -752,8 +752,8 @@ class Darknet(nn.Module):
                 routes = [int(route) for route in layer_info['layers'].split(',')]
                 # then, sum the number of filters from at each mentioned layer
                 out_filters = sum([filters_cache[route] for route in routes])
-        #         # add the dummy layer to the list
-        #         layer.add_module('route_' + i, EmptyLayer())
+                # # add the dummy layer to the list
+                # layer.add_module('route_' + i, EmptyLayer())
                 # add the route layer to the modulelist
                 layer.add_module('route_{}'.format(i), RouteLayer(routes))
 

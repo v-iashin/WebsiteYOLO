@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from time import time
+from time import strftime, localtime, time
 from base64 import b64encode
 import os
 import cv2
@@ -85,7 +85,7 @@ def show_image_w_bboxes_for_server(img_path, model, orientation):
         )
 
     # selecting a name for a file for archiving
-    filename = f'{time()}.jpg'
+    filename = f'{strftime("%y%m%d%H%M%S", localtime())}.jpg'
     archive_full_path = os.path.join(ARCHIVE_PATH, filename)
     img.save(archive_full_path, 'JPEG')
     img.save(OUTPUT_PATH, 'JPEG')
@@ -118,12 +118,12 @@ def upload_file():
             orientation = request.form['orientation']
             print(orientation)
 
-#             # which means that there is no EXIF in the user's image
-#             if orientation is 'undefined':
-#                 orientation = -1
+            # # which means that there is no
+            # if orientation is 'undefined':
+            #     orientation = -1
 
-#             # front-end's FormData sends the info in strings
-#             orientation = int(orientation)
+            # # front-end's FormData sends the info in strings
+            # orientation = int(orientation)
 
         except:
             orientation = 'undefined'
