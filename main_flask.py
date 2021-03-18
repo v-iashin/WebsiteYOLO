@@ -85,7 +85,7 @@ def show_image_w_bboxes_for_server(img_path, model, orientation):
         )
 
     # selecting a name for a file for archiving
-    filename = f'{strftime("%y%m%d%H%M%S", localtime())}.jpg'
+    filename = f'{strftime("%y-%m-%dT%H-%M-%S", localtime())}.jpg'
     archive_full_path = os.path.join(ARCHIVE_PATH, filename)
     img.save(archive_full_path, 'JPEG')
     img.save(OUTPUT_PATH, 'JPEG')
