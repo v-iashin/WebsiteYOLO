@@ -26,3 +26,5 @@ Install the [conda](https://docs.conda.io/en/latest/miniconda.html) environment
 conda env create -f ./conda_env.yml
 conda activate detector
 ```
+
+Thanks for Reading, Keep Coding. 
