@@ -486,7 +486,6 @@ class Darknet(nn.Module):
         # take the number of classes from the last (yolo) layer of the network.
         self.classes = self.layers_list[-1][0].classes
         self.model_width = self.layers_list[-1][0].model_width
-        print(f'INFO: self.noobj_coeff: {self.noobj_coeff}, self.obj_coeff: {self.obj_coeff}')
         # print('INFO: shortcut is using output[i-1] instead of x check whether works with x')
         print('INFO: changing predictions in the NMS loop make sure that it is not used later')
         print('INFO: not adding +1 in nms')
