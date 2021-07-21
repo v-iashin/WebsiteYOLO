@@ -3,13 +3,10 @@ from flask_cors import CORS
 from time import strftime, localtime, time
 from base64 import b64encode
 import os
-import cv2
 import matplotlib
 matplotlib.use('Agg')
 import torch
-from torch import nn
-from matplotlib import pyplot as plt
-from utils import parse_cfg, predict_and_save
+from utils import predict_and_save
 from darknet import Darknet
 
 ###
@@ -30,6 +27,7 @@ FONT_PATH = os.path.join(PROJECT_PATH, 'data/FreeSansBold.ttf')
 JPG_QUALITY = 80
 DEVICE = torch.device('cpu:0')
 
+# METHOD = 'yolo_416_coco'
 METHOD = 'yolo_608_coco'
 ###
 

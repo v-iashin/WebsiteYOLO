@@ -1,5 +1,3 @@
-from IPython.core.debugger import set_trace
-
 import os
 import numpy as np
 
@@ -88,7 +86,6 @@ class YOLOLayer(nn.Module):
         self.ignore_thresh = 0.5
         self.bce_loss = nn.BCELoss()
         self.mse_loss = nn.MSELoss()
-        print(f'self.noobj_coeff: {self.noobj_coeff}, self.obj_coeff: {self.obj_coeff}')
 
     def forward(self, x, targets, device, input_width):
         '''
@@ -454,10 +451,6 @@ class YOLOLayer(nn.Module):
         # obj_mask.sum() = number of g.t. objects
         all_ground_truths = obj_mask.sum()
 
-        # to be deleted
-        if (class_mask * gt_obj).sum() != class_mask.sum():
-            set_trace()
-
         # precision = TP / (TP + FP) = TP / all_detections
         precision = (iou50_mask * detected_mask).sum() / (all_detections + self.EPS)
         # recall = TP / (TP + FN) = TP / all_ground_truths
@@ -493,10 +486,11 @@ class Darknet(nn.Module):
         # take the number of classes from the last (yolo) layer of the network.
         self.classes = self.layers_list[-1][0].classes
         self.model_width = self.layers_list[-1][0].model_width
-        print('shortcut is using output[i-1] instead of x check whether works with x')
-        print('changing predictions in the nms loop make sure that it is not used later')
-        print('not adding +1 in nms')
-        print('loss: w and h aren"t put through sqroot' )
+        print(f'INFO: self.noobj_coeff: {self.noobj_coeff}, self.obj_coeff: {self.obj_coeff}')
+        # print('INFO: shortcut is using output[i-1] instead of x check whether works with x')
+        print('INFO: changing predictions in the NMS loop make sure that it is not used later')
+        print('INFO: not adding +1 in nms')
+        print('INFO: loss: w and h aren`t put through sqroot' )
 
     def forward(self, x, targets=None, device=torch.device('cpu')):
         '''
@@ -705,8 +699,7 @@ class Darknet(nn.Module):
         # it starts with the number of channels specified in net info, often = to 3 (RGB)
         filters_cache = [int(net_info['channels'])]
 
-        print("WARNING: sudivisions of a batch aren't used in contrast to the original cfg" )
-        print('we also can remove bias due to bn')
+        print('WARNING: sudivisions of a batch aren`t used in contrast to the original cfg')
 
         for i, layer_info in enumerate(layers_info[1:]):
             # we initialize sequential as a layer may have conv, bn, and activation
@@ -796,5 +789,5 @@ class Darknet(nn.Module):
             # append number of filter to filter_cache at each iteration (inc. yolo and shorcut)
             filters_cache.append(out_filters)
 
-        print('make_layers returns net_info as well. check whether it"s necessary')
+        # print('INFO: `make_layers` returns `net_info` as well. Check whether it is necessary')
         return net_info, layers_list
