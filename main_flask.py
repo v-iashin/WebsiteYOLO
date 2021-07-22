@@ -95,56 +95,47 @@ def show_image_w_bboxes_for_server(img_path, model, orientation):
     print('=' * 70)
 
 
-@app.route('/', methods=['GET', 'POST'])
+@app.route('/', methods=['POST'])
 def upload_file():
     '''
     Handles a request. If a request to '/' is of the type POST, handle the image
-    and add predictions on it; if a request of the type GET, return a notification
-    that GET request has been received.
+    and add predictions on it.
 
     Outputs
     -------
-    flask.wrappers.Response (POST), str (GET):
-        Outputs the json with filename and image fields (POST); returns a string
-        if a GET request is sent.
+    flask.wrappers.Response (POST):
+        Outputs the json with filename and image fields (POST).
     '''
 
-    if request.method == 'POST':
-        # access files in the request. See the line: 'form_data.append('file', blob);'
-        files = request.files['file']
-        try:
-            orientation = request.form['orientation']
-            print(orientation)
+    # access files in the request. See the line: 'form_data.append('file', blob);'
+    files = request.files['file']
+    try:
+        orientation = request.form['orientation']
+        # print(orientation)
+        # if orientation is 'undefined':
+        #     orientation = -1
+        # # front-end's FormData sends the info in strings
+        # orientation = int(orientation)
+        print(f'Orientation: {orientation}')
+    except:
+        orientation = 'undefined'
+        print(vars(request))
 
-            # # which means that there is no
-            # if orientation is 'undefined':
-            #     orientation = -1
+    # save the image ('file') to the disk
+    files.save(INPUT_PATH)
+    # run the predictions on the saved image
+    show_image_w_bboxes_for_server(INPUT_PATH, MODEL, orientation)
 
-            # # front-end's FormData sends the info in strings
-            # orientation = int(orientation)
+    # 'show_image_w_bboxes_for_server' saved the output image to the OUTPUT_PATH
+    # now we would like to make a byte-file from the save image and sent
+    # it back to the user
+    with open(OUTPUT_PATH, 'rb') as in_f:
+        # so we read an image and decode it into utf-8 string and append it
+        # to data:image/jpeg;base64 and then return it.
+        img_b64 = b64encode(in_f.read()).decode('utf-8')
+        img_b64 = 'data:image/jpeg;base64, ' + img_b64
 
-        except:
-            orientation = 'undefined'
-            print(vars(request))
-
-        # save the image ('file') to the disk
-        files.save(INPUT_PATH)
-        # run the predictions on the saved image
-        show_image_w_bboxes_for_server(INPUT_PATH, MODEL, orientation)
-
-        # 'show_image_w_bboxes_for_server' saved the output image to the OUTPUT_PATH
-        # now we would like to make a byte-file from the save image and sent
-        # it back to the user
-        with open(OUTPUT_PATH, 'rb') as in_f:
-            # so we read an image and decode it into utf-8 string and append it
-            # to data:image/jpeg;base64 and then return it.
-            img_b64 = b64encode(in_f.read()).decode('utf-8')
-            img_b64 = 'data:image/jpeg;base64, ' + img_b64
-
-        return jsonify(name='input.jpg', image=str(img_b64))
-
-    elif request.method == 'GET':
-        return 'GET request received'
+    return jsonify(name='input.jpg', image=str(img_b64))
 
 @app.route('/status_check', methods=['GET'])
 def status_check():
