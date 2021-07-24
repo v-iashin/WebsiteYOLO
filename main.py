@@ -65,6 +65,9 @@ def upload_file():
 
     # access files in the request. See the line: 'form_data.append('file', blob);'
     files = request.files['file']
+    # save the image ('file') to the disk
+    files.save(INPUT_PATH)
+
     try:
         orientation = request.form['orientation']
         print(f'Submitted orientation: {orientation}')
@@ -72,8 +75,6 @@ def upload_file():
         orientation = 'undefined'
         print(vars(request))
 
-    # save the image ('file') to the disk
-    files.save(INPUT_PATH)
     # run the predictions on the saved image
     show_image_w_bboxes_for_server(
         INPUT_PATH, OUTPUT_PATH, ARCHIVE_PATH, LABELS_PATH, FONT_PATH, MODEL, DEVICE, orientation
