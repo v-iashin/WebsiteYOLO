@@ -1,15 +1,13 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-from time import strftime, localtime, time
-from base64 import b64encode
 import os
-import matplotlib
-matplotlib.use('Agg')
-import torch
-from utils import predict_and_save
-from darknet import Darknet
+from base64 import b64encode
 
-###
+import torch
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+
+from darknet import Darknet
+from utils import show_image_w_bboxes_for_server
+
 PROJECT_PATH = './WebsiteYOLO/'
 
 PROJ_TEMP_PATH = os.path.join(PROJECT_PATH, 'proj_tmp')
@@ -21,26 +19,25 @@ LOG_PATH = os.path.join(PROJ_TEMP_PATH, 'log.txt')
 YOLOV3_WEIGHTS_PATH = os.path.join(PROJECT_PATH, 'weights/yolov3.weights')
 YOLOV3_416_CFG_PATH = os.path.join(PROJECT_PATH, 'cfg/yolov3_416x416.cfg')
 YOLOV3_608_CFG_PATH = os.path.join(PROJECT_PATH, 'cfg/yolov3_608x608.cfg')
-YOLOV3_LABELS_PATH = os.path.join(PROJECT_PATH, 'data/coco.names')
+LABELS_PATH = os.path.join(PROJECT_PATH, 'data/coco.names')
 FONT_PATH = os.path.join(PROJECT_PATH, 'data/FreeSansBold.ttf')
 
 JPG_QUALITY = 80
-DEVICE = torch.device('cpu:0')
+DEVICE = torch.device('cpu')
 
 # METHOD = 'yolo_416_coco'
 METHOD = 'yolo_608_coco'
-###
 
 # start Flask application
 app = Flask(__name__)
+# A Flask extension for handling Cross Origin Resource Sharing (CORS),
+# making cross-origin AJAX possible.
 CORS(app)
 
-if METHOD is 'yolo_608_coco':
+if METHOD == 'yolo_608_coco':
     MODEL = Darknet(YOLOV3_608_CFG_PATH)
-
-elif METHOD is 'yolo_416_coco':
+elif METHOD == 'yolo_416_coco':
     MODEL = Darknet(YOLOV3_416_CFG_PATH)
-
 else:
     raise Exception(f'Undefined method: "{METHOD}"')
 
@@ -52,47 +49,6 @@ assert os.path.exists(PROJECT_PATH), f'{PROJECT_PATH} does not exist. Consider t
 # if there is no folder for archiving, create
 if not os.path.exists(ARCHIVE_PATH):
     os.makedirs(ARCHIVE_PATH)
-
-def show_image_w_bboxes_for_server(img_path, model, orientation):
-    '''
-    Reads an image from the disk and applies a detection algorithm specified in model.
-
-    Arguments
-    ---------
-    img_path: str
-        A path to an image.
-    model: Darknet
-        Model to apply to the image.
-    orientation: str
-        Orientation which front-end tries to extract from EXIF of an image.
-        Can be 'undefined' or some integer which can be used to orient the image.
-        Used in predict_and_save().
-    '''
-
-    # I want to log the processing time for each image
-    start = time()
-
-    # predict_and_save returns both img with predictions drawn on it
-    # and the tensor with predictions
-
-    with torch.no_grad():
-        # TODO: add captital-letter arguments to the argument list
-        predictions, img = predict_and_save(
-            img_path, OUTPUT_PATH, model, DEVICE, YOLOV3_LABELS_PATH,
-            FONT_PATH, orientation, show=False
-        )
-
-    # selecting a name for a file for archiving
-    filename = f'{strftime("%y-%m-%dT%H-%M-%S", localtime())}.jpg'
-    archive_full_path = os.path.join(ARCHIVE_PATH, filename)
-    img.save(archive_full_path, 'JPEG')
-    img.save(OUTPUT_PATH, 'JPEG')
-
-    # calculating elapsed time and printing it to flask console
-    elapsed_time = round(time() - start, 2)
-
-    print(f'Processing time of {filename}: {elapsed_time} sec.')
-    print('=' * 70)
 
 
 @app.route('/', methods=['POST'])
@@ -111,12 +67,7 @@ def upload_file():
     files = request.files['file']
     try:
         orientation = request.form['orientation']
-        # print(orientation)
-        # if orientation is 'undefined':
-        #     orientation = -1
-        # # front-end's FormData sends the info in strings
-        # orientation = int(orientation)
-        print(f'Orientation: {orientation}')
+        print(f'Submitted orientation: {orientation}')
     except:
         orientation = 'undefined'
         print(vars(request))
@@ -124,7 +75,9 @@ def upload_file():
     # save the image ('file') to the disk
     files.save(INPUT_PATH)
     # run the predictions on the saved image
-    show_image_w_bboxes_for_server(INPUT_PATH, MODEL, orientation)
+    show_image_w_bboxes_for_server(
+        INPUT_PATH, OUTPUT_PATH, ARCHIVE_PATH, LABELS_PATH, FONT_PATH, MODEL, DEVICE, orientation
+    )
 
     # 'show_image_w_bboxes_for_server' saved the output image to the OUTPUT_PATH
     # now we would like to make a byte-file from the save image and sent

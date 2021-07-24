@@ -1,10 +1,11 @@
 import os
-import numpy as np
 
+import numpy as np
 import torch
 from torch import nn
 
-from utils import parse_cfg, iou_vectorized
+from utils import iou_vectorized, parse_cfg
+
 
 class RouteLayer(nn.Module):
     '''Route layer outputs the concatenated outputs from the specified layers.'''
