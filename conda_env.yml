@@ -8,8 +8,8 @@ dependencies:
   - backcall=0.1.0=py38_0
   - blas=1.0=mkl
   - bleach=3.1.0=py_0
-  - ca-certificates=2020.1.1=0
-  - certifi=2019.11.28=py38_0
+  - ca-certificates=2021.7.5=h06a4308_1
+  - certifi=2021.5.30=py38h06a4308_0
   - click=7.1.1=py_0
   - cpuonly=1.0=0
   - cycler=0.10.0=py38_0
@@ -18,8 +18,8 @@ dependencies:
   - defusedxml=0.6.0=py_0
   - entrypoints=0.3=py38_0
   - expat=2.2.6=he6710b0_0
-  - flask=1.1.1=py_0
-  - flask-cors=3.0.8=py_0
+  - flask=1.1.2=pyhd3eb1b0_0
+  - flask-cors=3.0.10=pyhd3eb1b0_0
   - fontconfig=2.13.0=h9420a91_0
   - freetype=2.9.1=h8a8886c_1
   - glib=2.63.1=h5a9c865_0
@@ -53,6 +53,7 @@ dependencies:
   - libstdcxx-ng=9.1.0=hdf63c60_0
   - libtiff=4.1.0=h2733197_0
   - libuuid=1.0.3=h1bed415_2
+  - libuv=1.40.0=h7b6447c_0
   - libxcb=1.13=h1bed415_1
   - libxml2=2.9.9=hea5a465_1
   - markupsafe=1.1.1=py38h7b6447c_0
@@ -71,7 +72,7 @@ dependencies:
   - numpy=1.18.1=py38h4f9e942_0
   - numpy-base=1.18.1=py38hde5b4d6_1
   - olefile=0.46=py_0
-  - openssl=1.1.1e=h7b6447c_0
+  - openssl=1.1.1k=h27cfd23_0
   - pandas=1.0.2=py38h0573a6f_0
   - pandoc=2.2.3.2=0
   - pandocfilters=1.4.2=py38_1
@@ -90,7 +91,7 @@ dependencies:
   - pyrsistent=0.15.7=py38h7b6447c_0
   - python=3.8.1=h0371630_1
   - python-dateutil=2.8.1=py_0
-  - pytorch=1.4.0=py3.8_cpu_0
+  - pytorch=1.9.0=py3.8_cpu_0
   - pytz=2019.3=py_0
   - pyzmq=18.1.1=py38he6710b0_0
   - qt=5.9.7=h5867ecd_1
@@ -103,9 +104,9 @@ dependencies:
   - terminado=0.8.3=py38_0
   - testpath=0.4.4=py_0
   - tk=8.6.8=hbc83047_0
-  - torchvision=0.5.0=py38_cpu
   - tornado=6.0.4=py38h7b6447c_1
   - traitlets=4.3.3=py38_0
+  - typing_extensions=3.10.0.0=pyh06a4308_0
   - wcwidth=0.1.8=py_0
   - webencodings=0.5.1=py38_1
   - werkzeug=1.0.0=py_0
@@ -117,4 +118,3 @@ dependencies:
   - zstd=1.3.7=h0b5b093_0
   - pip:
     - opencv-python==4.2.0.32
-
