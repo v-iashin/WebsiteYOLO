@@ -10,7 +10,7 @@ Once the predictions are obtained, they are drawn on the image, which is, then, 
 In this README I provided the environment setup for the computing machine, which runs the detection algorithm.
 However, setting up the back-end machine is just the tip of an iceberg.
 The whole engineering pipeline includes many other steps full of caveats.
-If you are interested in the details of each step, checkout [How Did You Build Your Object Detector?](https://v-iashin.github.io/how_did_you_build_my_detector).
+If you are interested in the details of each step, checkout [How Did You Build Your Object Detector?](https://v-iashin.github.io/how_did_you_build_your_detector).
 
 # Setting up the Environment
 Download the YOLOv3 weights
