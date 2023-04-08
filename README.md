@@ -61,3 +61,12 @@ You mount the `/etc/letsencrypt` from the host where you store your SSL certific
 to `/etc/letsencrypt` folder in the docker container.
 Also, this will mount `/home/ubuntu/WebsiteYOLO/proj_tmp` (make sure it exists)
 to gather the submitted images.
+
+# Running the detector as a Gradio app:
+
+You may also start it with a simple gradio interface.
+```
+conda activate detector
+python ./gradio_app.py
+```
+Open in browser as `http://127.0.0.1:7860`
