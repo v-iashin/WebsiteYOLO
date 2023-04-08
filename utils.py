@@ -1,5 +1,8 @@
 import os
 from time import localtime, strftime, time
+from pathlib import Path
+import hashlib
+import requests
 
 import numpy as np
 import torch
@@ -8,6 +11,27 @@ from matplotlib import pyplot as plt
 from matplotlib.colors import Normalize
 from PIL import Image, ImageDraw, ImageFont
 
+YOLOV3_WEIGHTS_PATH = 'https://pjreddie.com/media/files/yolov3.weights'
+YOLOV3_WEIGHTS_MD5 = 'c84e5b99d0e52cd466ae710cadf6d84c'
+
+def md5_hash(path):
+    with open(path, "rb") as f:
+        content = f.read()
+    return hashlib.md5(content).hexdigest()
+
+def check_if_file_exists_else_download(path, chunk_size=1024):
+    path = Path(path)
+    if not path.exists() or (md5_hash(path) != YOLOV3_WEIGHTS_MD5):
+        print(path, 'does not exist or md5sum is incorrect downloading from...')
+        path.parent.mkdir(exist_ok=True, parents=True)
+        with requests.get(YOLOV3_WEIGHTS_PATH, stream=True) as r:
+            total_size = int(r.headers.get('content-length', 0))
+            with open(path, 'wb') as f:
+                for data in r.iter_content(chunk_size=chunk_size):
+                    if data:
+                        f.write(data)
+        print('downloaded from', YOLOV3_WEIGHTS_PATH, 'md5 of the file:', md5_hash(path))
+    return path
 
 def parse_cfg(file):
     '''
@@ -334,7 +358,7 @@ def scale_numbers(num1, num2, largest_num_target):
 
     return round(num1), round(num2), scale_coeff
 
-def letterbox_pad(img, color=(127.5, 127.5, 127.5)):
+def letterbox_pad(img, color=127.5):
     '''
     Adds padding to an image according to the original implementation of darknet.
     Specifically, it will pad the image up to (net_input_size x net_input_size) size.
@@ -343,8 +367,8 @@ def letterbox_pad(img, color=(127.5, 127.5, 127.5)):
     ---------
     img: numpy.ndarray
         An image to pad.
-    color: (float or int, float or int, float or int) \in [0, 255]
-        The RGB intensities. The image will be padded with this color.
+    color: (float or int) \in [0, 255]
+        The RGB intensity. The image will be padded with this color.
 
     Output
     ------
@@ -357,11 +381,7 @@ def letterbox_pad(img, color=(127.5, 127.5, 127.5)):
     # make sure the arguments are of correct types
     assert isinstance(img, np.ndarray), '"img" should have numpy.ndarray type'
 #     assert isinstance(net_input_size, int), '"net_input_size" should have int type'
-    assert (
-        isinstance(color[0], (int, float)) and
-        isinstance(color[1], (int, float)) and
-        isinstance(color[2], (int, float))
-    ), 'each element of "color" should contain either a float or an int'
+    assert isinstance(color, (int, float)), '"color" should be an int or float'
 
     H, W, C = img.shape
     max_side_len = max(H, W)
@@ -435,17 +455,14 @@ def fix_orientation_if_needed(pil_img, orientation):
     return pil_img
 
 # TODO: test for different devices
-def predict_and_save(img_path, save_path, model, device, labels_path, font_path, orientation, show=False):
+def predict_and_save(source_img, model, device, labels_path, font_path, orientation, show=False):
     '''
-    Predicts objects on an image, draws the bounding boxes around the predicted objects,
-    and saves the image.
+    Performs inference on an image and saves the image with bounding boxes drawn on it.
 
     Arguments
     ---------
-    image_path: str
-        The path to an image with objects to predict.
-    save_path: str
-        The path for the output image with detected objects.
+    source_img: PIL.Image.Image or str
+        The image to perform inference on.
     model: Darknet
         The model which will be used for inference.
     device: torch.device or str
@@ -467,13 +484,8 @@ def predict_and_save(img_path, save_path, model, device, labels_path, font_path,
         Predictions of a size (<number of detected objects>, 4+1+<number of classes>).
         prediction is NoneType when no object has been detected on an image.
 
-    source_img: PIL.Image.Image
-        The image with bboxes drawn on it.
     '''
-    # make sure the arguments are of correct types
-    assert isinstance(img_path, str), '"img_path" should be str'
-    assert save_path is None or isinstance(save_path, str), 'save_path should be NoneType or str'
-    assert isinstance(labels_path, str), '"labels_path" should be str'
+    assert isinstance(labels_path, (str, Path)), '"labels_path" should be str or Path'
     assert isinstance(device, (torch.device, str)), 'device should be either torch.device or str'
     assert isinstance(show, bool), 'show should be boolean'
 
@@ -485,7 +497,6 @@ def predict_and_save(img_path, save_path, model, device, labels_path, font_path,
     line_thickness = 2
     obj_thresh = 0.8 # 0.8
     nms_thresh = 0.4 # 0.4
-    font = ImageFont.truetype(font_path, 14)
 
     # make a dict: {class_number: class_name} if we have more than 1 class
     if model.classes > 1:
@@ -498,8 +509,6 @@ def predict_and_save(img_path, save_path, model, device, labels_path, font_path,
         # we don't need a class names if the the number of classes is 1
         num2name = {0: ''}
 
-    # read an image
-    source_img = Image.open(img_path).convert('RGB')
     source_img = fix_orientation_if_needed(source_img, orientation)
     W, H = source_img.size
 
@@ -531,12 +540,13 @@ def predict_and_save(img_path, save_path, model, device, labels_path, font_path,
     # source_img with text that no objects are found. for comments for this
     # if condition please see the for-loop below
     if prediction is None:
-        top_left_coords = (0, 0)
-        black = (0, 0, 0)
         text = "Couldn't find any objects that I was trained to detect :-("
+        font = ImageFont.truetype(str(font_path), 20)
+        text_size = font.getsize(text)
+        top_left_coords = ((W-text_size[0])//2, H//2)
+        black = (0, 0, 0)
         # increase the font size a bit
-        font.size += 2
-        tag = Image.new('RGB', font.getsize(text), black)
+        tag = Image.new('RGB', text_size, black)
         source_img.paste(tag, top_left_coords)
         # create a rectangle object and draw it on the source image
         tag_draw = ImageDraw.Draw(source_img)
@@ -593,6 +603,7 @@ def predict_and_save(img_path, save_path, model, device, labels_path, font_path,
         class_name = num2name[class_int]
         # text to name a box: class name and the probability in percents
         text = f'{class_name}{(class_score * 100):.0f}%'
+        font = ImageFont.truetype(str(font_path), 14)
         text_size = font.getsize(text)
 
         # create a tag object and draw it on the source image
@@ -656,10 +667,16 @@ def show_image_w_bboxes_for_server(
 
     # predict_and_save returns both img with predictions drawn on it
     # and the tensor with predictions
+    assert out_path is None or isinstance(out_path, str), 'output should be either NoneType or str'
+    # make sure the arguments are of correct types
+    assert isinstance(img_path, (str, Path)), '"img_path" should be str or Path'
+
+    # read an image
+    source_img = Image.open(img_path).convert('RGB')
 
     with torch.no_grad():
         predictions, img = predict_and_save(
-            img_path, out_path, model, device, labels_path, font_path, orientation, show=False
+            source_img, model, device, labels_path, font_path, orientation, show=False
         )
 
     # selecting a name for a file for archiving
