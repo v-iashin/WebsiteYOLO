@@ -8,10 +8,14 @@ dependencies:
   - backcall=0.1.0=py38_0
   - blas=1.0=mkl
   - bleach=3.1.0=py_0
-  - ca-certificates=2021.7.5=h06a4308_1
-  - certifi=2021.5.30=py38h06a4308_0
+  - brotlipy=0.7.0=py38h27cfd23_1003
+  - ca-certificates=2023.01.10=h06a4308_0
+  - certifi=2022.12.7=py38h06a4308_0
+  - cffi=1.15.0=py38h7f8727e_0
+  - charset-normalizer=2.0.4=pyhd3eb1b0_0
   - click=7.1.1=py_0
   - cpuonly=1.0=0
+  - cryptography=39.0.1=py38h9ce1e76_0
   - cycler=0.10.0=py38_0
   - dbus=1.13.12=h746ee38_0
   - decorator=4.4.2=py_0
@@ -27,6 +31,7 @@ dependencies:
   - gst-plugins-base=1.14.0=hbbd80ab_1
   - gstreamer=1.14.0=hb453b48_1
   - icu=58.2=h9c2bf20_1
+  - idna=3.4=py38h06a4308_0
   - importlib_metadata=1.5.0=py38_0
   - intel-openmp=2020.0=166
   - ipykernel=5.1.4=py38h39e3cac_0
@@ -72,7 +77,7 @@ dependencies:
   - numpy=1.18.1=py38h4f9e942_0
   - numpy-base=1.18.1=py38hde5b4d6_1
   - olefile=0.46=py_0
-  - openssl=1.1.1k=h27cfd23_0
+  - openssl=1.1.1t=h7f8727e_0
   - pandas=1.0.2=py38h0573a6f_0
   - pandoc=2.2.3.2=0
   - pandocfilters=1.4.2=py38_1
@@ -85,10 +90,13 @@ dependencies:
   - prometheus_client=0.7.1=py_0
   - prompt_toolkit=3.0.3=py_0
   - ptyprocess=0.6.0=py38_0
+  - pycparser=2.21=pyhd3eb1b0_0
   - pygments=2.6.1=py_0
+  - pyopenssl=23.0.0=py38h06a4308_0
   - pyparsing=2.4.6=py_0
   - pyqt=5.9.2=py38h05f1152_4
   - pyrsistent=0.15.7=py38h7b6447c_0
+  - pysocks=1.7.1=py38h06a4308_0
   - python=3.8.1=h0371630_1
   - python-dateutil=2.8.1=py_0
   - pytorch=1.9.0=py3.8_cpu_0
@@ -96,6 +104,7 @@ dependencies:
   - pyzmq=18.1.1=py38he6710b0_0
   - qt=5.9.7=h5867ecd_1
   - readline=7.0=h7b6447c_5
+  - requests=2.28.1=py38h06a4308_1
   - send2trash=1.5.0=py38_0
   - setuptools=46.0.0=py38_0
   - sip=4.19.13=py38he6710b0_0
@@ -107,6 +116,7 @@ dependencies:
   - tornado=6.0.4=py38h7b6447c_1
   - traitlets=4.3.3=py38_0
   - typing_extensions=3.10.0.0=pyh06a4308_0
+  - urllib3=1.26.15=py38h06a4308_0
   - wcwidth=0.1.8=py_0
   - webencodings=0.5.1=py38_1
   - werkzeug=1.0.0=py_0
