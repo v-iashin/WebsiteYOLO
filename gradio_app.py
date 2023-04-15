@@ -1,4 +1,5 @@
 from pathlib import Path
+from time import time
 
 import torch
 import gradio as gr
@@ -9,6 +10,13 @@ sys.path.insert(0, './WebsiteYOLO')
 
 from darknet import Darknet
 from utils import check_if_file_exists_else_download, predict_and_save, scale_numbers
+
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+)
 
 class App:
 
@@ -29,14 +37,19 @@ class App:
         self.examples = sorted(glob(examples_glob), reverse=True)
         self.max_side_size = max_side_size
 
+        logging.info('Initializing the model...')
         self.model = Darknet(self.config_path)
+        logging.info('Loading weights...')
         self.model.load_weights(check_if_file_exists_else_download(self.weights_path))
         self.model.eval()
 
         self.iface = gr.Interface(
             fn=self.predict,
             inputs=gr.Image(type='pil'),
-            outputs='image',
+            outputs=[
+                gr.Image(type='pil', label='Image with detected objects'),
+                gr.Markdown()
+            ],
             examples=self.examples,
             cache_examples=False,
             title='YOLO v3 Object Detector',
@@ -44,11 +57,15 @@ class App:
             article=self.get_article(),
             **gr_interface_kwargs,
         )
+        logging.info('Launching Gradio interface...')
         self.iface.launch()
 
     def predict(self, source_img):
+        start_timer = time()
         if source_img is None:
+            logging.info('No image provided. Returning None.')
             return None
+        orig_size = source_img.size
         source_img = self.rescale_img(source_img)
         # inference
         with torch.no_grad():
@@ -56,7 +73,8 @@ class App:
                 source_img, self.model, self.device, self.labels_path, self.font_path,
                 orientation=None, save=False
             )
-        return img
+        logging.info(f'Input image dims: {orig_size}. Inference took {time() - start_timer:.2f} sec')
+        return img, predictions
 
     def rescale_img(self, img):
         '''img is a PIL image'''
