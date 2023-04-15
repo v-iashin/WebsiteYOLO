@@ -37,14 +37,16 @@ class App:
         self.examples = sorted(glob(examples_glob), reverse=True)
         self.max_side_size = max_side_size
 
+        logging.info('Initializing the model...')
         self.model = Darknet(self.config_path)
+        logging.info('Loading weights...')
         self.model.load_weights(check_if_file_exists_else_download(self.weights_path))
         self.model.eval()
 
         self.iface = gr.Interface(
             fn=self.predict,
             inputs=gr.Image(type='pil'),
-            outputs='image',
+            outputs=['image'],
             examples=self.examples,
             cache_examples=False,
             title='YOLO v3 Object Detector',

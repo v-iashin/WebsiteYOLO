@@ -487,10 +487,10 @@ class Darknet(nn.Module):
         # take the number of classes from the last (yolo) layer of the network.
         self.classes = self.layers_list[-1][0].classes
         self.model_width = self.layers_list[-1][0].model_width
-        # print('INFO: shortcut is using output[i-1] instead of x check whether works with x')
-        print('INFO: changing predictions in the NMS loop make sure that it is not used later')
-        print('INFO: not adding +1 in nms')
-        print('INFO: loss: w and h aren`t put through sqroot' )
+        # shortcut is using output[i-1] instead of x check whether works with x
+        # changing predictions in the NMS loop make sure that it is not used later
+        # not adding +1 in nms
+        # loss: w and h aren`t put through sqroot
 
     def forward(self, x, targets=None, device=torch.device('cpu')):
         '''
@@ -699,7 +699,7 @@ class Darknet(nn.Module):
         # it starts with the number of channels specified in net info, often = to 3 (RGB)
         filters_cache = [int(net_info['channels'])]
 
-        print('WARNING: sudivisions of a batch aren`t used in contrast to the original cfg')
+        # print('WARNING: sudivisions of a batch aren`t used in contrast to the original cfg')
 
         for i, layer_info in enumerate(layers_info[1:]):
             # we initialize sequential as a layer may have conv, bn, and activation
