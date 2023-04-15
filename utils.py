@@ -583,7 +583,8 @@ def predict_and_save(source_img, model, device, labels_path, font_path, orientat
     bottom_right_y = bottom_right_y.cpu().detach().int().numpy()
 
     # add each prediction on the image and captures it with a class number
-    human_readable_predictions = []
+    machine_readable_preds = []
+    machine_readable_preds.append('class,confidence,bx,by,bw,bh')
     for i in range(len(prediction)):
 
         ## ADD BBOXES
@@ -621,15 +622,21 @@ def predict_and_save(source_img, model, device, labels_path, font_path, orientat
         # adds the class label with confidence
         bbox_draw.text(top_left_coords_tag, text, font=font)
 
-        # add a prediction to the list of human readable predictions
-        human_readable_predictions.append({
-            'c': class_name,
-            'p': class_score,
-            'x': prediction[i, 0].item() / W,
-            'y': prediction[i, 1].item() / H,
-            'w': prediction[i, 2].item() / W,
-            'h': prediction[i, 3].item() / H,
-        })
+        # add a prediction to the list of human readable predictions by making an ugly string
+        machine_readable_preds.append(
+            ','.join([
+                f'{class_name.strip()}',
+                f'{class_score:.2f}',
+                f'{prediction[i, 0].item() / W:.2f}',
+                f'{prediction[i, 1].item() / H:.2f}',
+                f'{prediction[i, 2].item() / W:.2f}',
+                f'{prediction[i, 3].item() / H:.2f}',
+            ])
+        )
+
+    # enclose the list of human readable predictions into a markdown code block
+    machine_readable_preds = '\n'.join(machine_readable_preds)
+    machine_readable_preds = f'```\n{machine_readable_preds}\n```'
 
     # if show, then, show and close the environment
     if show:
@@ -638,7 +645,7 @@ def predict_and_save(source_img, model, device, labels_path, font_path, orientat
     if save:
         source_img.save('output.jpg', 'JPEG')
 
-    return human_readable_predictions, source_img
+    return machine_readable_preds, source_img
 
 def show_image_w_bboxes_for_server(
     img_path: str,

@@ -46,7 +46,10 @@ class App:
         self.iface = gr.Interface(
             fn=self.predict,
             inputs=gr.Image(type='pil'),
-            outputs=['image'],
+            outputs=[
+                gr.Image(type='pil', label='Image with detected objects'),
+                gr.Markdown()
+            ],
             examples=self.examples,
             cache_examples=False,
             title='YOLO v3 Object Detector',
@@ -71,7 +74,7 @@ class App:
                 orientation=None, save=False
             )
         logging.info(f'Input image dims: {orig_size}. Inference took {time() - start_timer:.2f} sec')
-        return img
+        return img, predictions
 
     def rescale_img(self, img):
         '''img is a PIL image'''
