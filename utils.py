@@ -455,7 +455,7 @@ def fix_orientation_if_needed(pil_img, orientation):
     return pil_img
 
 # TODO: test for different devices
-def predict_and_save(source_img, model, device, labels_path, font_path, orientation, show=False):
+def predict_and_save(source_img, model, device, labels_path, font_path, orientation, show=False, save=True):
     '''
     Performs inference on an image and saves the image with bounding boxes drawn on it.
 
@@ -477,6 +477,8 @@ def predict_and_save(source_img, model, device, labels_path, font_path, orientat
         Used in fix_orientation_if_needed().
     show: bool
         Whether to show the output image with bounding boxes, for example, in jupyter notebook
+    save: bool
+        Whether to save the output image with bounding boxes.
 
     Outputs
     -------
@@ -556,7 +558,8 @@ def predict_and_save(source_img, model, device, labels_path, font_path, orientat
         if show:
             plt.imshow(source_img)
 
-        source_img.save('output.jpg', 'JPEG')
+        if save:
+            source_img.save('output.jpg', 'JPEG')
 
         return None, source_img
     ###
@@ -580,6 +583,7 @@ def predict_and_save(source_img, model, device, labels_path, font_path, orientat
     bottom_right_y = bottom_right_y.cpu().detach().int().numpy()
 
     # add each prediction on the image and captures it with a class number
+    human_readable_predictions = []
     for i in range(len(prediction)):
 
         ## ADD BBOXES
@@ -617,14 +621,24 @@ def predict_and_save(source_img, model, device, labels_path, font_path, orientat
         # adds the class label with confidence
         bbox_draw.text(top_left_coords_tag, text, font=font)
 
+        # add a prediction to the list of human readable predictions
+        human_readable_predictions.append({
+            'c': class_name,
+            'p': class_score,
+            'x': prediction[i, 0].item() / W,
+            'y': prediction[i, 1].item() / H,
+            'w': prediction[i, 2].item() / W,
+            'h': prediction[i, 3].item() / H,
+        })
+
     # if show, then, show and close the environment
     if show:
         plt.imshow(source_img)
 
-    # RGB -> BGR and save output image
-    source_img.save('output.jpg', 'JPEG')
+    if save:
+        source_img.save('output.jpg', 'JPEG')
 
-    return prediction, source_img
+    return human_readable_predictions, source_img
 
 def show_image_w_bboxes_for_server(
     img_path: str,

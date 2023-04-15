@@ -8,7 +8,7 @@ import sys
 sys.path.insert(0, './WebsiteYOLO')
 
 from darknet import Darknet
-from utils import check_if_file_exists_else_download, predict_and_save
+from utils import check_if_file_exists_else_download, predict_and_save, scale_numbers
 
 class App:
 
@@ -18,6 +18,7 @@ class App:
             labels_path='./data/coco.names',
             font_path='./data/FreeSansBold.ttf',
             examples_glob="./data/*.jpg",
+            max_side_size=1280,
             **gr_interface_kwargs,
         ) -> None:
         self.device = torch.device('cpu')
@@ -26,6 +27,7 @@ class App:
         self.labels_path = Path(labels_path)
         self.font_path = Path(font_path)
         self.examples = sorted(glob(examples_glob), reverse=True)
+        self.max_side_size = max_side_size
 
         self.model = Darknet(self.config_path)
         self.model.load_weights(check_if_file_exists_else_download(self.weights_path))
@@ -36,16 +38,56 @@ class App:
             inputs=gr.Image(type='pil'),
             outputs='image',
             examples=self.examples,
+            cache_examples=False,
+            title='YOLO v3 Object Detector',
+            description=self.get_desc(),
+            article=self.get_article(),
             **gr_interface_kwargs,
         )
         self.iface.launch()
 
     def predict(self, source_img):
+        if source_img is None:
+            return None
+        source_img = self.rescale_img(source_img)
+        # inference
         with torch.no_grad():
             predictions, img = predict_and_save(
-                source_img, self.model, self.device, self.labels_path, self.font_path, orientation=None
+                source_img, self.model, self.device, self.labels_path, self.font_path,
+                orientation=None, save=False
             )
         return img
+
+    def rescale_img(self, img):
+        '''img is a PIL image'''
+        W, H = img.size
+        H_new, W_new, scale = scale_numbers(H, W, self.max_side_size)
+        img = img.resize((W_new, H_new))
+        return img
+
+    def get_desc(self):
+        return 'Welcome to my object detection web application. Simply upload an image and let ' \
+            + 'the model do the rest! It will quickly identify and locate objects within the ' \
+            + 'image and classify them into one of the ' \
+            + '[80 classes](https://raw.githubusercontent.com/v-iashin/WebsiteYOLO/master/data/coco.names).\n' \
+            + 'The model is based on [YOLOv3](https://pjreddie.com/darknet/yolo/) and was ' \
+            + 'trained on a massive dataset called [COCO](https://cocodataset.org/), ' \
+            + 'which made it one of the fastest and most accurate object detectors available ' \
+            + 'at the time when I re-implemented it back in 2019. \n' \
+            + 'The web application is hosted on ' \
+            + '[HuggingFace Spaces](https://huggingface.co/spaces/iashin/YOLOv3), ' \
+            + 'which generously provides the necessary computing power. ' \
+            # + 'If you\'re curious ' \
+            # + 'about the technical details behind this project, feel free to check out my ' \
+            # + '[post](https://iashin.ai/how_did_you_build_your_detector.html) on how I built it.'
+
+    def get_article(self):
+        return 'More info:\n' \
+            + '* [Back-end code](https://github.com/v-iashin/WebsiteYOLO)\n' \
+            + '* [HuggingFace Spaces App](https://huggingface.co/spaces/iashin/YOLOv3)\n' \
+            + '* [Submit an issue](https://github.com/v-iashin/WebsiteYOLO/issues)\n' \
+            + '* [Building it without Gradio](https://iashin.ai/how_did_you_build_your_detector)'
+
 
 if __name__ == '__main__':
     App()
