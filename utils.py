@@ -22,7 +22,7 @@ def md5_hash(path):
 def check_if_file_exists_else_download(path, chunk_size=1024):
     path = Path(path)
     if not path.exists() or (md5_hash(path) != YOLOV3_WEIGHTS_MD5):
-        print(path, 'does not exist or md5sum is incorrect downloading from...')
+        print(path, 'does not exist or md5sum is incorrect downloading...')
         path.parent.mkdir(exist_ok=True, parents=True)
         with requests.get(YOLOV3_WEIGHTS_PATH, stream=True) as r:
             total_size = int(r.headers.get('content-length', 0))

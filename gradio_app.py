@@ -1,4 +1,5 @@
 from pathlib import Path
+from time import time
 
 import torch
 import gradio as gr
@@ -9,6 +10,13 @@ sys.path.insert(0, './WebsiteYOLO')
 
 from darknet import Darknet
 from utils import check_if_file_exists_else_download, predict_and_save, scale_numbers
+
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+)
 
 class App:
 
@@ -44,11 +52,15 @@ class App:
             article=self.get_article(),
             **gr_interface_kwargs,
         )
+        logging.info('Launching Gradio interface...')
         self.iface.launch()
 
     def predict(self, source_img):
+        start_timer = time()
         if source_img is None:
+            logging.info('No image provided. Returning None.')
             return None
+        orig_size = source_img.size
         source_img = self.rescale_img(source_img)
         # inference
         with torch.no_grad():
@@ -56,6 +68,7 @@ class App:
                 source_img, self.model, self.device, self.labels_path, self.font_path,
                 orientation=None, save=False
             )
+        logging.info(f'Input image dims: {orig_size}. Inference took {time() - start_timer:.2f} sec')
         return img
 
     def rescale_img(self, img):
