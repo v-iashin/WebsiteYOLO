@@ -55,6 +55,8 @@ class App:
             title='YOLO v3 Object Detector',
             description=self.get_desc(),
             article=self.get_article(),
+            allow_flagging='never',
+            theme=gr.themes.Soft(),
             **gr_interface_kwargs,
         )
         logging.info('Launching Gradio interface...')
@@ -64,7 +66,7 @@ class App:
         start_timer = time()
         if source_img is None:
             logging.info('No image provided. Returning None.')
-            return None
+            return None, None
         orig_size = source_img.size
         source_img = self.rescale_img(source_img)
         # inference
