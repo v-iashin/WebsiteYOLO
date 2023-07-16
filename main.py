@@ -12,6 +12,7 @@ PROJECT_PATH = './WebsiteYOLO/'
 
 PROJ_TEMP_PATH = os.path.join(PROJECT_PATH, 'proj_tmp')
 ARCHIVE_PATH = os.path.join(PROJ_TEMP_PATH, 'upload_archive')
+os.makedirs(ARCHIVE_PATH, exist_ok=True)
 INPUT_PATH = os.path.join(PROJ_TEMP_PATH, 'input.jpg')
 OUTPUT_PATH = os.path.join(PROJ_TEMP_PATH, 'output.jpg')
 LOG_PATH = os.path.join(PROJ_TEMP_PATH, 'log.txt')
