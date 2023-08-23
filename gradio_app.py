@@ -99,14 +99,14 @@ class App:
             + 'which generously provides the necessary computing power. ' \
             # + 'If you\'re curious ' \
             # + 'about the technical details behind this project, feel free to check out my ' \
-            # + '[post](https://iashin.ai/how_did_you_build_your_detector.html) on how I built it.'
+            # + '[post](https://v-iashin.github.io/how_did_you_build_your_detector.html) on how I built it.'
 
     def get_article(self):
         return 'More info:\n' \
             + '* [Back-end code](https://github.com/v-iashin/WebsiteYOLO)\n' \
             + '* [HuggingFace Spaces App](https://huggingface.co/spaces/iashin/YOLOv3)\n' \
             + '* [Submit an issue](https://github.com/v-iashin/WebsiteYOLO/issues)\n' \
-            + '* [Building it without Gradio](https://iashin.ai/how_did_you_build_your_detector)'
+            + '* [Building it without Gradio](https://v-iashin.github.io/how_did_you_build_your_detector)'
 
 
 if __name__ == '__main__':
