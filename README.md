@@ -30,10 +30,6 @@ In this README I provided the environment setup for both Gradio and Flask.
 You can use either conda or docker to setup the environment which supports both Flask and Gradio.
 
 ## conda
-Download the YOLOv3 weights
-```bash
-bash ./weights/download_weights_yolov3.sh
-```
 
 Install the [conda](https://docs.conda.io/en/latest/miniconda.html) environment
 ```bash

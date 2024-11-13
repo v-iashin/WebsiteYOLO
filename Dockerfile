@@ -35,9 +35,6 @@ RUN git clone https://github.com/v-iashin/WebsiteYOLO.git
 # Set the working directory to WebsiteYOLO
 WORKDIR $HOME/app/WebsiteYOLO
 
-# download the weights
-RUN bash ./weights/download_weights_yolov3.sh
-
 # Installing conda environment
 RUN conda env create -f conda_env.yml
 RUN conda clean -afy
